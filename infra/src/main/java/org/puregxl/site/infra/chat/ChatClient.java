@@ -30,7 +30,6 @@ public interface ChatClient {
     /**
      * 获取服务提供商名称
      *
-     * @return 服务提供商标识：{@link ModelProvider}
      */
     String provider();
 
