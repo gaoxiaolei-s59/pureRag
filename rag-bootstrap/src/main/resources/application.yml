@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: rag-bootstrap
+  ai:
+    vectorstore:
+      milvus:
+        client:
+          uri: ${rag.vector.milvus.uri}
+        collection-name: ${rag.vector.milvus.collection-name}
+        embedding-dimension: ${rag.vector.milvus.dimension}
+        metric-type: ${rag.vector.milvus.metric-type}
+        initialize-schema: ${rag.vector.milvus.initialize-schema}
+
+rag:
+  vector:
+    type: milvus
+    milvus:
+      uri: http://localhost:19530
+      collection-name: user_resume_vector
+      dimension: 1536
+      metric-type: COSINE
+      initialize-schema: true
+
+rustfs:
+  url: http://localhost:9000
+  access-key-id: rustfsadmin
+  secret-access-key: rustfsadmin
+  bucket-name: user-resume
+  create-bucket-if-missing: true
