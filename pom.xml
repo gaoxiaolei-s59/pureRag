@@ -22,6 +22,7 @@
         <tika.version>2.9.2</tika.version>
         <hutool-all.version>5.8.37</hutool-all.version>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <redisson.version>4.0.0</redisson.version>
     </properties>
 
 
@@ -42,6 +43,12 @@
                 <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson-spring-boot-starter</artifactId>
+                <version>${redisson.version}</version>
             </dependency>
 
             <dependency>
