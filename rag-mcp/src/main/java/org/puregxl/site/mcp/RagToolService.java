@@ -1,5 +1,8 @@
 package org.puregxl.site.mcp;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.puregxl.site.mcp.dao.entity.ResumeEntity;
+import org.puregxl.site.mcp.dao.mapper.ResumeMapper;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
@@ -12,6 +15,12 @@ import java.util.Set;
 
 @Service
 public class RagToolService {
+
+    private final ResumeMapper resumeMapper;
+
+    public RagToolService(ResumeMapper resumeMapper) {
+        this.resumeMapper = resumeMapper;
+    }
 
     private static final List<KnowledgeDocument> KNOWLEDGE_BASE = List.of(
             new KnowledgeDocument(
@@ -87,6 +96,22 @@ public class RagToolService {
         }
 
         return new RagAnswer(answer.toString(), contexts);
+    }
+
+
+
+    @Tool(name = "resume_list_by_user_id", description = "根据用户ID查询该用户的简历列表")
+    public List<ResumeEntity> listResumesByUserId(
+            @ToolParam(description = "用户ID") Long userId) {
+
+        if (userId == null || userId <= 0) {
+            return List.of();
+        }
+
+        return resumeMapper.selectList(new LambdaQueryWrapper<ResumeEntity>()
+                .eq(ResumeEntity::getUserId, userId)
+                .orderByDesc(ResumeEntity::getUpdateTime)
+                .orderByDesc(ResumeEntity::getId));
     }
 
     private static int normalizeTopK(Integer topK) {
