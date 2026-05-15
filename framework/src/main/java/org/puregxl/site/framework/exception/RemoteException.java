@@ -17,7 +17,7 @@
 
 package org.puregxl.site.framework.exception;
 
-import
+
 import org.puregxl.site.framework.errorcode.BaseErrorCode;
 import org.puregxl.site.framework.errorcode.IErrorCode;
 

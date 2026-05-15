@@ -1,15 +1,23 @@
 spring:
+
   application:
     name: rag-bootstrap
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/rag?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
   ai:
+    model:
+      chat: none
+      embedding: none
+      image: none
+      audio:
+        speech: none
+        transcription: none
+      moderation: none
     vectorstore:
-      milvus:
-        client:
-          uri: ${rag.vector.milvus.uri}
-        collection-name: ${rag.vector.milvus.collection-name}
-        embedding-dimension: ${rag.vector.milvus.dimension}
-        metric-type: ${rag.vector.milvus.metric-type}
-        initialize-schema: ${rag.vector.milvus.initialize-schema}
+      type: none
 
 rag:
   vector:
@@ -25,5 +33,7 @@ rustfs:
   url: http://localhost:9000
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
-  bucket-name: user-resume
   create-bucket-if-missing: true
+
+
+

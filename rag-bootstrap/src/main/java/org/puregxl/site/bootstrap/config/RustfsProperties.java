@@ -34,12 +34,6 @@ public class RustfsProperties {
     private String secretAccessKey = "rustfsadmin";
 
     /**
-     * 简历文件桶名。
-     */
-    @NotBlank
-    private String bucketName = "user-resume";
-
-    /**
      * 启动时桶不存在是否自动创建。
      */
     private Boolean createBucketIfMissing = true;

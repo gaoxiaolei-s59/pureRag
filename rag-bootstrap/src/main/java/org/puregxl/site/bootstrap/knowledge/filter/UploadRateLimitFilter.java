@@ -68,7 +68,7 @@ public class UploadRateLimitFilter extends OncePerRequestFilter {
     }
 
 
-    private static final String UPLOAD_PATH_PATTERN = "/knowledge/";
+    private static final String UPLOAD_PATH_PATTERN = "/knowledge-base/";
     private static final String UPLOAD_PATH_SUFFIX = "/docs/upload";
 
     /**
