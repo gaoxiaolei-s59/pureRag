@@ -15,8 +15,7 @@ import java.util.Date;
 @TableName("t_knowledge_base")
 public class KnowledgeBaseDO {
 
-
-
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
     /**

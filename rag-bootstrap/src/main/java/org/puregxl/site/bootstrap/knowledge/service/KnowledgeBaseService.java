@@ -1,6 +1,10 @@
 package org.puregxl.site.bootstrap.knowledge.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeBaseCreateRequest;
+import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeBasePageRequest;
+import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeBaseUpdateRequest;
+import org.puregxl.site.bootstrap.knowledge.dto.response.KnowledgeBaseResponse;
 
 public interface KnowledgeBaseService {
 
@@ -10,4 +14,12 @@ public interface KnowledgeBaseService {
      * @param request 创建请求
      */
     void createKnowledgeBase(KnowledgeBaseCreateRequest request);
+
+    void renameKnowledgeBase(String kbId, KnowledgeBaseUpdateRequest request);
+
+    void delete(String kbId);
+
+    KnowledgeBaseResponse queryKnowledgeBaseById(String kbId);
+
+    IPage<KnowledgeBaseResponse> pageQuery(KnowledgeBasePageRequest requestParam);
 }

@@ -9,14 +9,16 @@ import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import org.apache.ibatis.reflection.MetaObject;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 import javax.sql.DataSource;
 import java.util.Date;
 
-@Configuration
+@AutoConfiguration
+@ConditionalOnClass({DataSource.class, SqlSessionFactory.class, MybatisSqlSessionFactoryBean.class})
 public class DataBaseConfiguration {
     /**
      * MyBatis-Plus PostgreSQL 分页插件
@@ -57,11 +59,7 @@ public class DataBaseConfiguration {
     }
 
     /**
-     * MyBatis-Plus 源数据自动填充类
-     * <p>
-     * 作者：马丁
-     * 加项目群：早加入就是优势！500人内部项目群，分享的知识总有你需要的 <a href="https://t.zsxq.com/cw7b9" />
-     * 开发时间：2024-07-08
+     * MyBatis-Plus 源数据自动填充类。
      */
     static class MyMetaObjectHandler implements MetaObjectHandler {
 
@@ -74,7 +72,7 @@ public class DataBaseConfiguration {
 
         @Override
         public void updateFill(MetaObject metaObject) {
-            strictInsertFill(metaObject, "updateTime", Date::new, Date.class);
+            strictUpdateFill(metaObject, "updateTime", Date::new, Date.class);
         }
     }
 }
