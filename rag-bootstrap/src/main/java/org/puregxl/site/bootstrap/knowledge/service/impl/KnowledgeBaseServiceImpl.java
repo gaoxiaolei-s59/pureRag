@@ -16,6 +16,7 @@ import org.puregxl.site.bootstrap.knowledge.dto.response.KnowledgeBaseResponse;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeBaseService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeVectorResourceService;
+import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.exception.ServiceException;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     /**
      * 创建对应的KnowledgeBase - Milvus - Rustfs
+     *
      * @param request 创建请求
      */
     @Override
@@ -63,6 +65,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                     .name(request.getName().trim())
                     .embeddingModel(request.getEmbeddingModel().trim())
                     .collectionName(collectionName)
+                    .createdBy(UserContext.getUserContext().getUserId())
                     .build());
         } catch (RuntimeException ex) {
             if (storageCreated) {
@@ -77,6 +80,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     /**
      * 更改文档
+     *
      * @param kbId
      * @param request
      */
@@ -94,6 +98,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         KnowledgeBaseDO build = KnowledgeBaseDO.builder()
                 .id(kbId)
+                .updatedBy(UserContext.getUserContext().getUserId())
                 .name(request.getName()).build();
         int updateById = knowledgeBaseMapper.updateById(build);
 
@@ -107,6 +112,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     /**
      * 删除知识库
+     *
      * @param kbId
      */
     @Override
@@ -120,10 +126,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         //TODO 扩展点 - 后续可以更改为有文档就不支持删除
         int deleted = knowledgeBaseMapper.deleteById(kbId);
 
-       if (deleted != 1) {
-           log.info("删除失败, kbId={}", kbId);
-           throw new ServiceException("删除失败");
-       }
+        if (deleted != 1) {
+            log.info("删除失败, kbId={}", kbId);
+            throw new ServiceException("删除失败");
+        }
 
         log.info("删除成功, kbId={}", kbId);
 
@@ -131,6 +137,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     /**
      * 查询数据库基本信息
+     *
      * @param kbId
      * @return
      */
@@ -144,7 +151,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         if (ObjectUtils.isEmpty(knowledgeBaseDO)) {
             throw new ServiceException("知识库不存在");
         }
-        return BeanUtil.toBean(knowledgeBaseDO,  KnowledgeBaseResponse.class);
+        return BeanUtil.toBean(knowledgeBaseDO, KnowledgeBaseResponse.class);
     }
 
     /**
@@ -165,7 +172,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                         requestParam == null ? null : requestParam.getName().trim())
                 .orderByDesc(KnowledgeBaseDO::getCreateTime));
 
-        return resultPage.convert(t -> BeanUtil.toBean(t,  KnowledgeBaseResponse.class));
+        return resultPage.convert(t -> BeanUtil.toBean(t, KnowledgeBaseResponse.class));
     }
 
 }
