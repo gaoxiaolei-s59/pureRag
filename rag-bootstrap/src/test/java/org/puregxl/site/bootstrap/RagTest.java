@@ -4,8 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.puregxl.site.infra.chat.LLMService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootApplication
+@SpringBootTest
 public class RagTest {
     @Autowired
     public LLMService llmService;

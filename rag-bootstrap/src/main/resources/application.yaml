@@ -93,7 +93,7 @@ ai:
       - id: qwen-emb-8b
         provider: siliconflow
         model: Qwen/Qwen3-Embedding-8B
-        dimension: ${rag.default.dimension}
+        dimension: ${rag.vector.milvus.dimension}
         priority: 1
 
   rerank:
@@ -107,5 +107,4 @@ ai:
         provider: noop
         model: noop
         priority: 100
-
 
