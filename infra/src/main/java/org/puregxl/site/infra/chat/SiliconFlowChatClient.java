@@ -23,6 +23,7 @@ import okhttp3.OkHttpClient;
 import org.puregxl.site.infra.enums.ModelProvider;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.infra.model.ModelTarget;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.Executor;
@@ -33,7 +34,7 @@ public class SiliconFlowChatClient extends AbstractOpenAIStyleChatClient {
 
     public SiliconFlowChatClient(OkHttpClient syncHttpClient,
                                  OkHttpClient streamingHttpClient,
-                                 Executor modelStreamExecutor) {
+                                 @Qualifier("modelStreamExecutor") Executor modelStreamExecutor) {
         super(syncHttpClient, streamingHttpClient, modelStreamExecutor);
     }
 

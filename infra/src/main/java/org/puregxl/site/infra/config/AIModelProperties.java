@@ -19,7 +19,6 @@ package org.puregxl.site.infra.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,7 +30,6 @@ import java.util.Map;
  * 用于从配置文件中读取 AI 相关的配置信息，包括提供商配置、模型组配置等
  */
 @Data
-@Configuration
 @ConfigurationProperties(prefix = "ai")
 public class AIModelProperties {
 
