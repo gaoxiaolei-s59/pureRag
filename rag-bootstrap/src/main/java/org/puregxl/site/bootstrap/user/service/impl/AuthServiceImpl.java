@@ -5,7 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.puregxl.site.bootstrap.user.context.UserInfoDto;
+import org.puregxl.site.bootstrap.user.context.UserInfoDTO;
 import org.puregxl.site.bootstrap.user.dao.entity.UserDO;
 import org.puregxl.site.bootstrap.user.dao.mapper.UserMapper;
 import org.puregxl.site.bootstrap.user.dto.request.LoginRequest;
@@ -50,7 +50,7 @@ public class AuthServiceImpl implements AuthService {
 
         StpUtil.login(user.getId());
 
-        UserInfoDto userInfoDto = new UserInfoDto();
+        UserInfoDTO userInfoDto = new UserInfoDTO();
         userInfoDto.setUserId(user.getId());
         userInfoDto.setAvatar(user.getAvatar());
         userInfoDto.setRole(user.getRole());

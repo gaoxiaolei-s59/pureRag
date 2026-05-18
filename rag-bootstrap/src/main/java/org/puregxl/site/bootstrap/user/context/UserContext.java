@@ -1,7 +1,7 @@
 package org.puregxl.site.bootstrap.user.context;
 
 public class UserContext {
-    private static final ThreadLocal<UserInfoDto> THREAD_LOCAL = new ThreadLocal<>();
+    private static final ThreadLocal<UserInfoDTO> THREAD_LOCAL = new ThreadLocal<>();
 
     /**
      * 移除用户上下文
@@ -14,14 +14,14 @@ public class UserContext {
     /**
      * 设置用户上下文
      */
-    public static void setUserContext(UserInfoDto userContext) {
+    public static void setUserContext(UserInfoDTO userContext) {
         THREAD_LOCAL.set(userContext);
     }
 
     /**
      * 获取用户上下文
      */
-    public static UserInfoDto getUserContext() {
+    public static UserInfoDTO getUserContext() {
         return THREAD_LOCAL.get();
     }
 }

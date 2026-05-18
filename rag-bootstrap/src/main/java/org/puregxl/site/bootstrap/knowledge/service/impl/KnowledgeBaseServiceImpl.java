@@ -124,13 +124,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
 
         //TODO 扩展点 - 后续可以更改为有文档就不支持删除
-        int deleted = knowledgeBaseMapper.deleteById(kbId);
 
-        if (deleted != 1) {
-            log.info("删除失败, kbId={}", kbId);
-            throw new ServiceException("删除失败");
-        }
-
+        knowledgeBaseDO.setDelFlag(1);
+        knowledgeBaseDO.setUpdatedBy(UserContext.getUserContext().getUserId());
+        knowledgeBaseMapper.updateById(knowledgeBaseDO);
         log.info("删除成功, kbId={}", kbId);
 
     }
@@ -167,11 +164,11 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         Page<KnowledgeBaseDO> page = Page.of(current, size);
         IPage<KnowledgeBaseDO> resultPage = knowledgeBaseMapper.selectPage(page, Wrappers.lambdaQuery(KnowledgeBaseDO.class)
-                .like(requestParam != null && StringUtils.hasText(requestParam.getName()),
+                .eq(requestParam != null && StringUtils.hasText(requestParam.getName()),
                         KnowledgeBaseDO::getName,
                         requestParam == null ? null : requestParam.getName().trim())
+                .eq(KnowledgeBaseDO::getDelFlag, 0)
                 .orderByDesc(KnowledgeBaseDO::getCreateTime));
-
         return resultPage.convert(t -> BeanUtil.toBean(t, KnowledgeBaseResponse.class));
     }
 
