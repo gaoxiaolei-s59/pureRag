@@ -80,11 +80,6 @@
             <artifactId>redisson-spring-boot-starter</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.rocketmq</groupId>
-            <artifactId>rocketmq-spring-boot-starter</artifactId>
-        </dependency>
-
         <!-- MySQL 驱动，用于初始化 rag-bootstrap 的业务库 DataSource -->
         <dependency>
             <groupId>com.mysql</groupId>

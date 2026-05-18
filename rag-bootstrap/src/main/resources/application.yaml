@@ -17,10 +17,6 @@ spring:
       moderation: none
     vectorstore:
       type: none
-  servlet:
-    multipart:
-      max-file-size: 50MB
-      max-request-size: 100MB
 
 
 rag:
@@ -38,12 +34,6 @@ rustfs:
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
   create-bucket-if-missing: true
-
-rocketmq:
-  name-server: 127.0.0.1:9876
-  producer:
-    group: ragent-producer_pg
-    send-message-timeout: 2000
 
 mybatis-plus:
   global-config:
@@ -117,3 +107,4 @@ ai:
         provider: noop
         model: noop
         priority: 100
+

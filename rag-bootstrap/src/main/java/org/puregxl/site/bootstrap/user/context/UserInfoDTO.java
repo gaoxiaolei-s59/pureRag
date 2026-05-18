@@ -3,7 +3,7 @@ package org.puregxl.site.bootstrap.user.context;
 import lombok.Data;
 
 @Data
-public class UserInfoDTO {
+public class UserInfoDto {
     /**
      * 用户id
      */
