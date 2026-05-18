@@ -20,6 +20,7 @@ import org.puregxl.site.bootstrap.knowledge.dto.response.KnowledgeDocumentRespon
 import org.puregxl.site.bootstrap.knowledge.enums.DocumentStatus;
 import org.puregxl.site.bootstrap.knowledge.enums.SourceType;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
+import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
 import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.exception.ServiceException;
@@ -27,6 +28,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLConnection;
 import java.util.Locale;
 
 @Service
@@ -40,6 +46,8 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private final KnowledgeChunkMapper knowledgeChunkMapper;
 
+    private final KnowledgeStorageResourceService storageResourceService;
+    
     /**
      * 上传文档：入库记录 + 文件落盘，返回文档ID
      */
@@ -67,6 +75,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ClientException("URL 来源必须提供来源地址");
         }
 
+        MultipartFile uploadFile = buildUploadFile(sourceType, requestParam, file);
         String docName = buildDocumentName(sourceType, requestParam, file);
         KnowledgeDocumentDO document = KnowledgeDocumentDO.builder()
                 .kbId(kbId)
@@ -77,9 +86,8 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .scheduleCron(requestParam.getScheduleCron())
                 .enabled(1)
                 .chunkCount(0)
-                .fileUrl(SourceType.FILE.getCode().equals(sourceType) ? file.getOriginalFilename() : null)
-                .fileType(resolveFileType(file, docName))
-                .fileSize(file == null ? null : file.getSize())
+                .fileType(resolveFileType(uploadFile, docName))
+                .fileSize(uploadFile.getSize())
                 .processMode(defaultIfBlank(requestParam.getProcessMode(), "chunk"))
                 .chunkStrategy(requestParam.getChunkStrategy())
                 .chunkConfig(requestParam.getChunkConfig())
@@ -89,18 +97,37 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .deleted(0)
                 .build();
         int inserted = knowledgeDocumentMapper.insert(document);
+
         if (inserted != 1) {
             throw new ServiceException("上传文档失败");
         }
+
+        String bucketName = knowledgeBaseDO.getCollectionName();
+        String objectKey = buildDocumentObjectKey(document.getId(), uploadFile.getOriginalFilename());
+        String fileUrl = storageResourceService.uploadDocument(bucketName, objectKey, uploadFile);
+        KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
+                .id(document.getId())
+                .fileUrl(fileUrl)
+                .updatedBy(currentUserId())
+                .build();
+        int updated = knowledgeDocumentMapper.updateById(update);
+        if (updated != 1) {
+            storageResourceService.deleteDocument(bucketName, objectKey);
+            throw new ServiceException("更新文档文件地址失败");
+        }
+        document.setFileUrl(fileUrl);
         return BeanUtil.toBean(document, KnowledgeDocumentResponse.class);
     }
 
     /**
-     * 开始文档分块。当前先完成状态流转，后续接入解析/向量化任务时从 running 状态继续处理。
+     * 开始文档分块：状态流转 -> Tika 抽取文本 -> 分块入库。
      */
     @Override
     public void startChunkKnowledgeDocument(String docId) {
         KnowledgeDocumentDO document = getDocumentDO(docId);
+        if (StrUtil.isNotBlank(document.getProcessMode()) && !"chunk".equalsIgnoreCase(document.getProcessMode())) {
+            throw new ClientException("当前接口仅支持 chunk 处理模式");
+        }
         KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
                 .id(document.getId())
                 .status(DocumentStatus.RUNNING.getCode())
@@ -217,12 +244,50 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         return requestParam.getSourceLocation().trim();
     }
 
+    private MultipartFile buildUploadFile(String sourceType, KnowledgeDocumentUploadRequest requestParam, MultipartFile file) {
+        if (SourceType.FILE.getCode().equals(sourceType)) {
+            return file;
+        }
+        return downloadUrlFile(requestParam.getSourceLocation().trim());
+    }
+
+    private MultipartFile downloadUrlFile(String sourceLocation) {
+        try (InputStream inputStream = URI.create(sourceLocation).toURL().openStream()) {
+            byte[] bytes = inputStream.readAllBytes();
+            if (bytes.length == 0) {
+                throw new ClientException("URL 文档内容为空");
+            }
+            String filename = resolveUrlFilename(sourceLocation);
+            String contentType = defaultIfBlank(URLConnection.guessContentTypeFromName(filename), "application/octet-stream");
+            return new UrlMultipartFile("file", filename, contentType, bytes);
+        } catch (ClientException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new ServiceException("拉取 URL 文档失败：" + ex.getMessage());
+        }
+    }
+
+    private String resolveUrlFilename(String sourceLocation) {
+        URI uri = URI.create(sourceLocation);
+        String path = uri.getPath();
+        if (StrUtil.isBlank(path) || path.endsWith("/")) {
+            return "url-document";
+        }
+        String filename = path.substring(path.lastIndexOf('/') + 1);
+        return StrUtil.isBlank(filename) ? "url-document" : filename;
+    }
+
     private String resolveFileType(MultipartFile file, String docName) {
         String filename = file == null ? docName : file.getOriginalFilename();
         if (StrUtil.isBlank(filename) || !filename.contains(".")) {
             return null;
         }
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    private String buildDocumentObjectKey(String docId, String docName) {
+        String filename = docName.replace("\\", "_").replace("/", "_");
+        return "docs/" + docId + "/" + filename;
     }
 
     private String defaultIfBlank(String value, String defaultValue) {
@@ -235,5 +300,48 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private String currentUserId() {
         return UserContext.getUserContext() == null ? null : UserContext.getUserContext().getUserId();
+    }
+
+    private record UrlMultipartFile(String name, String originalFilename, String contentType, byte[] bytes) implements MultipartFile {
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return bytes.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return bytes.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(bytes);
+        }
+
+        @Override
+        public void transferTo(java.io.File dest) throws IOException, IllegalStateException {
+            throw new UnsupportedOperationException("URL 文档上传流程不需要 transferTo");
+        }
     }
 }

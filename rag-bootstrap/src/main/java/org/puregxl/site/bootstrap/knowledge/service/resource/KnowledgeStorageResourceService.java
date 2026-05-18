@@ -1,17 +1,11 @@
 package org.puregxl.site.bootstrap.knowledge.service.resource;
 
+import org.springframework.web.multipart.MultipartFile;
+
 /**
- * 知识库对象存储资源服务，负责把业务资源名映射为对象存储资源并管理生命周期。
+ * 知识库对象存储资源服务，负责管理知识库文档文件的存储生命周期。
  */
 public interface KnowledgeStorageResourceService {
-
-    /**
-     * 根据知识库资源名生成对象存储 bucket 名称。
-     *
-     * @param resourceName 业务资源名，通常为 Milvus Collection 名称
-     * @return 符合对象存储命名规则的 bucket 名称
-     */
-    String buildBucketName(String resourceName);
 
     /**
      * 创建对象存储资源。
@@ -19,6 +13,32 @@ public interface KnowledgeStorageResourceService {
      * @param bucketName bucket 名称
      */
     void createStorage(String bucketName);
+
+    /**
+     * 上传文档文件。
+     *
+     * @param bucketName bucket 名称
+     * @param objectKey 对象 key
+     * @param file 待上传文件
+     * @return RustFS 控制台浏览地址，格式为 {consoleUrl}/browser/{bucket}/{encodedKey}
+     */
+    String uploadDocument(String bucketName, String objectKey, MultipartFile file);
+
+    /**
+     * 读取已经上传的文档文件。
+     *
+     * @param fileUrl RustFS 控制台浏览地址，格式为 {consoleUrl}/browser/{bucket}/{encodedKey}
+     * @return 文件二进制内容
+     */
+    byte[] downloadDocument(String fileUrl);
+
+    /**
+     * 删除文档文件。
+     *
+     * @param bucketName bucket 名称
+     * @param objectKey 对象 key
+     */
+    void deleteDocument(String bucketName, String objectKey);
 
     /**
      * 回滚对象存储资源。

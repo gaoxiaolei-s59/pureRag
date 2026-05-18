@@ -41,7 +41,6 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     @Transactional(rollbackFor = Exception.class)
     public void createKnowledgeBase(KnowledgeBaseCreateRequest request) {
         String collectionName = vectorResourceService.normalizeCollectionName(request.getCollectionName());
-        String storageBucketName = storageResourceService.buildBucketName(collectionName);
         Long count = knowledgeBaseMapper.selectCount(Wrappers.lambdaQuery(KnowledgeBaseDO.class)
                 .eq(KnowledgeBaseDO::getName, request.getName().trim())
                 .or()
@@ -57,8 +56,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             vectorResourceService.createCollection(collectionName);
             collectionCreated = true;
 
-            // RustFS bucket 使用 S3 兼容命名规则，不能直接复用带下划线的 Milvus Collection 名称。
-            storageResourceService.createStorage(storageBucketName);
+            // RustFS bucket 与 Milvus Collection 使用同一个资源名，便于知识库资源统一定位。
+            storageResourceService.createStorage(collectionName);
             storageCreated = true;
 
             knowledgeBaseMapper.insert(KnowledgeBaseDO.builder()
@@ -69,7 +68,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                     .build());
         } catch (RuntimeException ex) {
             if (storageCreated) {
-                storageResourceService.rollbackStorage(storageBucketName);
+                storageResourceService.rollbackStorage(collectionName);
             }
             if (collectionCreated) {
                 vectorResourceService.rollbackCollection(collectionName);
