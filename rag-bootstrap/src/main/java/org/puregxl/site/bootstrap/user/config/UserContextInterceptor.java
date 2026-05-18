@@ -5,7 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.jspecify.annotations.Nullable;
 import org.puregxl.site.bootstrap.user.context.UserContext;
-import org.puregxl.site.bootstrap.user.context.UserInfoDto;
+import org.puregxl.site.bootstrap.user.context.UserInfoDTO;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -18,7 +18,7 @@ public class UserContextInterceptor implements HandlerInterceptor {
         StpUtil.checkLogin();
 
         Object user = StpUtil.getSession().get("user");
-        if (user instanceof UserInfoDto userInfoDto) {
+        if (user instanceof UserInfoDTO userInfoDto) {
             UserContext.setUserContext(userInfoDto);
         }
         return true;
