@@ -20,17 +20,25 @@ public interface KnowledgeStorageResourceService {
      * @param bucketName bucket 名称
      * @param objectKey 对象 key
      * @param file 待上传文件
-     * @return RustFS 控制台浏览地址，格式为 {consoleUrl}/browser/{bucket}/{encodedKey}
+     * @return RustFS 文件地址，格式为 rustfs://bucket/objectKey
      */
     String uploadDocument(String bucketName, String objectKey, MultipartFile file);
 
     /**
      * 读取已经上传的文档文件。
      *
-     * @param fileUrl RustFS 控制台浏览地址，格式为 {consoleUrl}/browser/{bucket}/{encodedKey}
+     * @param fileUrl RustFS 文件地址，格式为 rustfs://bucket/objectKey
      * @return 文件二进制内容
      */
     byte[] downloadDocument(String fileUrl);
+
+    /**
+     * 读取已经上传的文档文件，并包装成 MultipartFile。
+     *
+     * @param fileUrl RustFS 文件地址，格式为 rustfs://bucket/objectKey
+     * @return MultipartFile 文件对象
+     */
+    MultipartFile downloadDocumentAsMultipartFile(String fileUrl);
 
     /**
      * 删除文档文件。

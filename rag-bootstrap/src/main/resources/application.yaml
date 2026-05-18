@@ -35,7 +35,6 @@ rag:
 
 rustfs:
   url: http://localhost:9000
-  console-url: http://localhost:9001/rustfs/console
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
   create-bucket-if-missing: true
@@ -52,6 +51,9 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+sa-token:
+  timeout: 2592000
 
 ai:
   providers:

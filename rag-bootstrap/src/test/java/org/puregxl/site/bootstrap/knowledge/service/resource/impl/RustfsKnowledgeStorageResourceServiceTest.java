@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 class RustfsKnowledgeStorageResourceServiceTest {
 
     @Test
-    void uploadDocumentReturnsRustfsConsoleBrowserUrl() {
+    void uploadDocumentReturnsRustfsUrl() {
         S3Client s3Client = mock(S3Client.class);
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
@@ -29,11 +29,11 @@ class RustfsKnowledgeStorageResourceServiceTest {
 
         String fileUrl = service.uploadDocument("kb-demo", "docs/1/demo.txt", file);
 
-        assertThat(fileUrl).isEqualTo("http://localhost:9001/rustfs/console/browser/kb-demo/docs%2F1%2Fdemo.txt");
+        assertThat(fileUrl).isEqualTo("rustfs://kb-demo/docs/1/demo.txt");
     }
 
     @Test
-    void downloadDocumentReadsObjectFromRustfsConsoleBrowserUrl() {
+    void downloadDocumentReadsObjectFromRustfsUrl() {
         S3Client s3Client = mock(S3Client.class);
         when(s3Client.getObjectAsBytes(argThat((GetObjectRequest request) ->
                 "a-bucket".equals(request.bucket())
@@ -41,8 +41,25 @@ class RustfsKnowledgeStorageResourceServiceTest {
                 .thenReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), "hello".getBytes()));
         RustfsKnowledgeStorageResourceService service = new RustfsKnowledgeStorageResourceService(new RustfsProperties(), s3Client);
 
-        byte[] content = service.downloadDocument("http://localhost:9001/rustfs/console/browser/a-bucket/files%2Fbm25_stats%2F465585969488670805%2F");
+        byte[] content = service.downloadDocument("rustfs://a-bucket/files/bm25_stats/465585969488670805/");
 
         assertThat(content).isEqualTo("hello".getBytes());
+    }
+
+    @Test
+    void downloadDocumentAsMultipartFileWrapsDownloadedObject() throws Exception {
+        S3Client s3Client = mock(S3Client.class);
+        when(s3Client.getObjectAsBytes(argThat((GetObjectRequest request) ->
+                "a-bucket".equals(request.bucket())
+                        && "docs/1/demo.txt".equals(request.key()))))
+                .thenReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), "hello".getBytes()));
+        RustfsKnowledgeStorageResourceService service = new RustfsKnowledgeStorageResourceService(new RustfsProperties(), s3Client);
+
+        var multipartFile = service.downloadDocumentAsMultipartFile("rustfs://a-bucket/docs/1/demo.txt");
+
+        assertThat(multipartFile.getName()).isEqualTo("file");
+        assertThat(multipartFile.getOriginalFilename()).isEqualTo("demo.txt");
+        assertThat(multipartFile.getContentType()).isEqualTo("text/plain");
+        assertThat(multipartFile.getBytes()).isEqualTo("hello".getBytes());
     }
 }

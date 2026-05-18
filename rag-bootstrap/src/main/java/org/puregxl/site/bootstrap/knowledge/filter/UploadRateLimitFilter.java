@@ -33,7 +33,6 @@ public class UploadRateLimitFilter extends OncePerRequestFilter {
         RagSemaphoreProperties.PermitExpirableConfig config = semaphoreProperties.getDocumentUpload();
         RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(config.getName());
 
-        //尝试获取许可
         String permitId = null;
         try {
             permitId = semaphore.tryAcquire(
@@ -41,30 +40,29 @@ public class UploadRateLimitFilter extends OncePerRequestFilter {
                     config.getLeaseSeconds(),
                     TimeUnit.SECONDS
             );
-
-            if (permitId == null) {
-                //获取失败 直接返回
-                response.setStatus(429);
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"code\":\"429\",\"message\":\"当前上传人数过多，请稍后再试\"}");
-                return; // 不调用 chain.doFilter()，请求到此为止
-            }
-
-
         } catch (Exception e) {
             Thread.currentThread().interrupt();
             response.setStatus(500);
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write("{\"code\":\"500\",\"message\":\"获取上传许可失败\"}");
-        } finally {
-            if (permitId != null) {
-                boolean released = semaphore.tryRelease(permitId);
-                if (!released) {
-                    log.warn("许可不存在或者已经被释放, permitId = {}", permitId);
-                }
-            }
+            return;
         }
 
+        if (permitId == null) {
+            response.setStatus(429);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":\"429\",\"message\":\"当前上传人数过多，请稍后再试\"}");
+            return;
+        }
+
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            boolean released = semaphore.tryRelease(permitId);
+            if (!released) {
+                log.warn("许可不存在或者已经被释放, permitId = {}", permitId);
+            }
+        }
     }
 
 

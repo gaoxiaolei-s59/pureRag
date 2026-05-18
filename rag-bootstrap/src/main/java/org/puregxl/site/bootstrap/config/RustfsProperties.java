@@ -22,12 +22,6 @@ public class RustfsProperties {
     private String url = "http://localhost:9000";
 
     /**
-     * RustFS 控制台地址，用于生成前端可浏览的文件链接。
-     */
-    @NotBlank
-    private String consoleUrl = "http://localhost:9001/rustfs/console";
-
-    /**
      * Access Key。
      */
     @NotBlank

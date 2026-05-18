@@ -18,10 +18,11 @@ import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.net.URLConnection;
 
 /**
  * RustFS/S3 兼容对象存储资源服务，封装 bucket 创建、文件上传和回滚逻辑。
@@ -31,7 +32,7 @@ import java.nio.charset.StandardCharsets;
 public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageResourceService {
 
     private static final String STORAGE_KEEP_OBJECT_KEY = ".keep";
-    private static final String CONSOLE_BROWSER_PATH = "/browser/";
+    private static final String RUSTFS_URL_SCHEME = "rustfs";
 
     private final RustfsProperties rustfsProperties;
     private final S3Client rustfsS3Client;
@@ -82,7 +83,7 @@ public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageRe
                             .contentLength(file.getSize())
                             .build(),
                     RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-            return buildConsoleBrowserUrl(bucketName, objectKey);
+            return buildRustfsUrl(bucketName, objectKey);
         } catch (Exception ex) {
             throw new ServiceException("上传 RustFS 文档文件失败：" + ex.getMessage());
         }
@@ -91,7 +92,7 @@ public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageRe
     @Override
     public byte[] downloadDocument(String fileUrl) {
         try {
-            RustfsObjectLocation objectLocation = parseConsoleBrowserUrl(fileUrl);
+            RustfsObjectLocation objectLocation = parseRustfsUrl(fileUrl);
             ResponseBytes<GetObjectResponse> responseBytes = rustfsS3Client.getObjectAsBytes(GetObjectRequest.builder()
                     .bucket(objectLocation.bucketName())
                     .key(objectLocation.objectKey())
@@ -100,6 +101,15 @@ public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageRe
         } catch (Exception ex) {
             throw new ServiceException("读取 RustFS 文档文件失败：" + ex.getMessage());
         }
+    }
+
+    @Override
+    public MultipartFile downloadDocumentAsMultipartFile(String fileUrl) {
+        RustfsObjectLocation objectLocation = parseRustfsUrl(fileUrl);
+        byte[] documentBytes = downloadDocument(fileUrl);
+        String filename = resolveFilename(objectLocation.objectKey());
+        String contentType = URLConnection.guessContentTypeFromName(filename);
+        return new DownloadedMultipartFile("file", filename, contentType, documentBytes);
     }
 
     /**
@@ -131,33 +141,71 @@ public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageRe
         }
     }
 
-    private String buildConsoleBrowserUrl(String bucketName, String objectKey) {
-        String consoleUrl = rustfsProperties.getConsoleUrl();
-        if (consoleUrl.endsWith("/")) {
-            consoleUrl = consoleUrl.substring(0, consoleUrl.length() - 1);
-        }
-        return consoleUrl + CONSOLE_BROWSER_PATH + bucketName + "/" + encodeObjectKey(objectKey);
+    private String buildRustfsUrl(String bucketName, String objectKey) {
+        return RUSTFS_URL_SCHEME + "://" + bucketName + "/" + objectKey;
     }
 
-    private RustfsObjectLocation parseConsoleBrowserUrl(String fileUrl) {
+    private RustfsObjectLocation parseRustfsUrl(String fileUrl) {
         URI uri = URI.create(fileUrl);
-        String path = uri.getRawPath();
-        int browserPathIndex = path.indexOf(CONSOLE_BROWSER_PATH);
-        if (browserPathIndex < 0) {
-            throw new ServiceException("RustFS 控制台地址缺少 browser 路径：" + fileUrl);
+        if (!RUSTFS_URL_SCHEME.equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+            throw new ServiceException("RustFS 文件地址格式不正确：" + fileUrl);
         }
-        String browserPath = path.substring(browserPathIndex + CONSOLE_BROWSER_PATH.length());
-        int bucketEndIndex = browserPath.indexOf('/');
-        if (bucketEndIndex <= 0 || bucketEndIndex == browserPath.length() - 1) {
-            throw new ServiceException("RustFS 控制台地址缺少 bucket 或对象 Key：" + fileUrl);
+        String objectKey = uri.getPath() == null || uri.getPath().length() <= 1 ? null : uri.getPath().substring(1);
+        if (objectKey == null || objectKey.isBlank()) {
+            throw new ServiceException("RustFS 文件地址缺少对象 Key：" + fileUrl);
         }
-        String bucketName = URLDecoder.decode(browserPath.substring(0, bucketEndIndex), StandardCharsets.UTF_8);
-        String objectKey = URLDecoder.decode(browserPath.substring(bucketEndIndex + 1), StandardCharsets.UTF_8);
-        return new RustfsObjectLocation(bucketName, objectKey);
+        return new RustfsObjectLocation(uri.getHost(), objectKey);
     }
 
-    private String encodeObjectKey(String objectKey) {
-        return URLEncoder.encode(objectKey, StandardCharsets.UTF_8).replace("+", "%20");
+    private String resolveFilename(String objectKey) {
+        int slashIndex = objectKey.lastIndexOf('/');
+        if (slashIndex < 0 || slashIndex == objectKey.length() - 1) {
+            return objectKey;
+        }
+        return objectKey.substring(slashIndex + 1);
+    }
+
+    private record DownloadedMultipartFile(String name, String originalFilename, String contentType, byte[] bytes) implements MultipartFile {
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return bytes.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return bytes.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(bytes);
+        }
+
+        @Override
+        public void transferTo(java.io.File dest) throws IOException, IllegalStateException {
+            throw new UnsupportedOperationException("下载文件包装对象不支持 transferTo");
+        }
     }
 
     private record RustfsObjectLocation(String bucketName, String objectKey) {
