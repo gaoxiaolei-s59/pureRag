@@ -1,4 +1,4 @@
-package org.puregxl.site.framework.mq;
+package org.puregxl.site.framework.mq.productor;
 
 import org.apache.rocketmq.client.producer.SendResult;
 
@@ -13,7 +13,7 @@ public interface MessageQueueProducer {
      * @param object
      * @return
      */
-    SendResult send(String topic, String keys, Object object);
+    SendResult send(String topic, String keys, String bizDesc, Object object);
 
 
     /**
@@ -23,5 +23,5 @@ public interface MessageQueueProducer {
      * @param object
      * @param localTransaction
      */
-    void sendInTransaction(String topic, String keys, Object object, Consumer<Object> localTransaction);
+    void sendInTransaction(String topic, String keys, String bizDesc, Object object, Consumer<Object> localTransaction);
 }

@@ -19,4 +19,6 @@ public interface KnowledgeDocumentService {
     void updateKnowledgeDocument(String docId, KnowledgeDocumentUpdateRequest requestParam);
 
     IPage<KnowledgeDocumentResponse> pageKnowledgeDocument(String kbId, KnowledgeDocumentPageRequest requestParam);
+
+    void executeChunk(String docId);
 }

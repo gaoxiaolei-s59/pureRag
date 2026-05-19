@@ -10,20 +10,25 @@ import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeBaseDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeChunkDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentDO;
+import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentScheduleExecDO;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeBaseMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeChunkMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentMapper;
+import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentScheduleExecMapper;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeDocumentPageRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeDocumentUpdateRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeDocumentUploadRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.response.KnowledgeDocumentResponse;
 import org.puregxl.site.bootstrap.knowledge.enums.DocumentStatus;
 import org.puregxl.site.bootstrap.knowledge.enums.SourceType;
+import org.puregxl.site.bootstrap.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
 import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.exception.ServiceException;
+import org.puregxl.site.framework.mq.productor.MessageQueueProducer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,6 +38,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLConnection;
+import java.util.Date;
 import java.util.Locale;
 
 @Service
@@ -47,6 +53,13 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final KnowledgeChunkMapper knowledgeChunkMapper;
 
     private final KnowledgeStorageResourceService storageResourceService;
+
+    private final MessageQueueProducer messageQueueProducer;
+
+    private final KnowledgeDocumentScheduleExecMapper scheduleExecMapper;
+
+    @Value("knowledge-document-chunk_topic${unique-name:}")
+    private String chunkTopic = "knowledge-document-chunk_topic";
     
     /**
      * 上传文档：入库记录 + 文件落盘，返回文档ID
@@ -120,7 +133,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     /**
-     * 开始文档分块：状态流转 -> Tika 抽取文本 -> 分块入库。
+     * 开始文档分块：先发送 RocketMQ 事务消息，再在本地事务里标记文档处理中并记录一次执行流水。
      */
     @Override
     public void startChunkKnowledgeDocument(String docId) {
@@ -128,6 +141,21 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         if (StrUtil.isNotBlank(document.getProcessMode()) && !"chunk".equalsIgnoreCase(document.getProcessMode())) {
             throw new ClientException("当前接口仅支持 chunk 处理模式");
         }
+
+        KnowledgeDocumentChunkEvent event = KnowledgeDocumentChunkEvent.builder()
+                .docId(document.getId())
+                .kbId(document.getKbId())
+                .operator(currentUserId())
+                .build();
+        messageQueueProducer.sendInTransaction(chunkTopic,
+                document.getId(),
+                "文档分块任务",
+                event,
+                ignored -> startChunkLocalTransaction(document));
+    }
+
+    private void startChunkLocalTransaction(KnowledgeDocumentDO document) {
+        // RocketMQ 事务消息的本地事务：只有文档状态和执行流水同时写入成功，消息才提交给消费者。
         KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
                 .id(document.getId())
                 .status(DocumentStatus.RUNNING.getCode())
@@ -136,6 +164,20 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         int updated = knowledgeDocumentMapper.updateById(update);
         if (updated != 1) {
             throw new ServiceException("开始文档分块失败");
+        }
+        KnowledgeDocumentScheduleExecDO exec = KnowledgeDocumentScheduleExecDO.builder()
+                .scheduleId(null)
+                .docId(document.getId())
+                .kbId(document.getKbId())
+                .status(DocumentStatus.RUNNING.getCode())
+                .message("手动触发文档分块")
+                .startTime(new Date())
+                .fileName(document.getDocName())
+                .fileSize(document.getFileSize())
+                .build();
+        int inserted = scheduleExecMapper.insert(exec);
+        if (inserted != 1) {
+            throw new ServiceException("创建文档分块执行记录失败");
         }
     }
 
@@ -166,6 +208,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         return BeanUtil.toBean(getDocumentDO(docId), KnowledgeDocumentResponse.class);
     }
 
+    /**
+     * 更新文档接口
+     * @param docId
+     * @param requestParam
+     */
     @Override
     public void updateKnowledgeDocument(String docId, KnowledgeDocumentUpdateRequest requestParam) {
         if (requestParam == null) {
@@ -210,6 +257,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                         .orderByDesc(KnowledgeDocumentDO::getCreateTime));
         return resultPage.convert(item -> BeanUtil.toBean(item, KnowledgeDocumentResponse.class));
     }
+
+    /**
+     * 开始切块
+     * @param docId
+     */
+    @Override
+    public void executeChunk(String docId) {
+
+    }
+
 
     private KnowledgeDocumentDO getDocumentDO(String docId) {
         if (StrUtil.isBlank(docId)) {
