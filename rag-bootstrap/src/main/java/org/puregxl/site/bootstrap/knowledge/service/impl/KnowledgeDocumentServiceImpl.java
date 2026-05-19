@@ -2,9 +2,15 @@ package org.puregxl.site.bootstrap.knowledge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeBaseDO;
@@ -23,11 +29,14 @@ import org.puregxl.site.bootstrap.knowledge.enums.DocumentStatus;
 import org.puregxl.site.bootstrap.knowledge.enums.SourceType;
 import org.puregxl.site.bootstrap.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
+import org.puregxl.site.bootstrap.knowledge.service.resource.FileParseService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
+import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeVectorResourceService;
 import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.exception.ServiceException;
 import org.puregxl.site.framework.mq.productor.MessageQueueProducer;
+import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +47,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLConnection;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -54,9 +65,15 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private final KnowledgeStorageResourceService storageResourceService;
 
+    private final FileParseService fileParseService;
+
+    private final KnowledgeVectorResourceService vectorResourceService;
+
     private final MessageQueueProducer messageQueueProducer;
 
     private final KnowledgeDocumentScheduleExecMapper scheduleExecMapper;
+
+    private final EmbeddingService embeddingService;
 
     @Value("knowledge-document-chunk_topic${unique-name:}")
     private String chunkTopic = "knowledge-document-chunk_topic";
@@ -263,8 +280,174 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
      * @param docId
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void executeChunk(String docId) {
+        KnowledgeDocumentDO document = getDocumentDO(docId);
+        try {
+            if (StrUtil.isBlank(document.getFileUrl())) {
+                throw new ClientException("文档文件地址不能为空");
+            }
+            String text = fileParseService.parseFileByTika(document.getFileUrl());
+            if (StrUtil.isBlank(text)) {
+                throw new ClientException("文档解析内容为空");
+            }
+            KnowledgeBaseDO knowledgeBase = getKnowledgeBase(document);
 
+            String embeddingModel = knowledgeBase.getEmbeddingModel();
+            ChunkConfig chunkConfig = parseChunkConfig(document);
+            List<String> chunks = splitTextIntoChunks(text, chunkConfig);
+            if (chunks.isEmpty()) {
+                throw new ClientException("文档解析内容为空");
+            }
+            List<List<Float>> embeddings = embeddingService.embedBatch(chunks, embeddingModel);
+            if (embeddings.size() != chunks.size()) {
+                throw new ServiceException("Embedding 结果数量与 Chunk 数量不一致");
+            }
+
+            // 重新分块时先清理向量库旧数据，再废弃 MySQL 旧 Chunk，保证检索侧不会读到同文档旧版本内容。
+            vectorResourceService.deleteDocumentChunks(knowledgeBase.getCollectionName(), document.getId());
+            knowledgeChunkMapper.update(null, new UpdateWrapper<KnowledgeChunkDO>()
+                    .eq("doc_id", document.getId())
+                    .set("deleted", 1)
+                    .set("updated_by", currentUserId()));
+
+            List<KnowledgeVectorResourceService.KnowledgeVectorChunk> vectorChunks = new ArrayList<>(chunks.size());
+            for (int i = 0; i < chunks.size(); i++) {
+                String content = chunks.get(i);
+                KnowledgeChunkDO chunk = KnowledgeChunkDO.builder()
+                        .id(IdWorker.getIdStr())
+                        .kbId(document.getKbId())
+                        .docId(document.getId())
+                        .chunkIndex(i)
+                        .content(content)
+                        .contentHash(Integer.toHexString(content.hashCode()))
+                        .charCount(content.length())
+                        .enabled(1)
+                        .createdBy(currentUserId())
+                        .deleted(0)
+                        .build();
+                int inserted = knowledgeChunkMapper.insert(chunk);
+                if (inserted != 1) {
+                    throw new ServiceException("写入文档 Chunk 失败");
+                }
+                vectorChunks.add(new KnowledgeVectorResourceService.KnowledgeVectorChunk(
+                        chunk.getId(),
+                        document.getId(),
+                        i,
+                        content,
+                        embeddings.get(i)));
+            }
+            vectorResourceService.insertChunks(knowledgeBase.getCollectionName(), vectorChunks);
+
+            KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
+                    .id(document.getId())
+                    .status(DocumentStatus.SUCCESS.getCode())
+                    .chunkCount(chunks.size())
+                    .updatedBy(currentUserId())
+                    .build();
+
+            int updated = knowledgeDocumentMapper.updateById(update);
+            if (updated != 1) {
+                throw new ServiceException("更新文档分块状态失败");
+            }
+        } catch (ClientException | ServiceException ex) {
+            markDocumentChunkFailed(document.getId());
+            throw ex;
+        } catch (Exception ex) {
+            markDocumentChunkFailed(document.getId());
+            throw new ServiceException("执行文档分块失败：" + ex.getMessage());
+        }
+
+    }
+
+
+    /**
+     * 查询文档所属知识库，用于获取向量 Collection 和 embedding 模型。
+     */
+    private KnowledgeBaseDO getKnowledgeBase(KnowledgeDocumentDO document) {
+        KnowledgeBaseDO knowledgeBaseDO = knowledgeBaseMapper.selectById(document.getKbId());
+        if (knowledgeBaseDO == null) {
+            throw new ClientException("查询知识库为空");
+        }
+        return knowledgeBaseDO;
+    }
+
+    /**
+     *
+     * @param document
+     * @return
+     */
+    private ChunkConfig parseChunkConfig(KnowledgeDocumentDO document) {
+        String configJson = StrUtil.isBlank(document.getChunkConfig()) ? document.getChunkStrategy() : document.getChunkConfig();
+        int chunkSize = 1000;
+        int overlapSize = 100;
+        if (StrUtil.isBlank(configJson) || !configJson.trim().startsWith("{")) {
+            return new ChunkConfig(chunkSize, overlapSize);
+        }
+
+        try {
+            JsonObject config = JsonParser.parseString(configJson).getAsJsonObject();
+            chunkSize = readPositiveInt(config, chunkSize, "chunkSize", "targetChars", "maxChars");
+            overlapSize = readNonNegativeInt(config, overlapSize, "overlapSize", "overlapChars");
+        } catch (JsonSyntaxException | IllegalStateException ex) {
+            throw new ClientException("分块参数 JSON 格式错误");
+        }
+        if (overlapSize >= chunkSize) {
+            throw new ClientException("分块重叠大小必须小于分块大小");
+        }
+        return new ChunkConfig(chunkSize, overlapSize);
+    }
+
+    private int readPositiveInt(JsonObject config, int defaultValue, String... names) {
+        int value = readInt(config, defaultValue, names);
+        if (value <= 0) {
+            throw new ClientException("分块大小必须大于 0");
+        }
+        return value;
+    }
+
+    private int readNonNegativeInt(JsonObject config, int defaultValue, String... names) {
+        int value = readInt(config, defaultValue, names);
+        if (value < 0) {
+            throw new ClientException("分块重叠大小不能小于 0");
+        }
+        return value;
+    }
+
+    private int readInt(JsonObject config, int defaultValue, String... names) {
+        for (String name : names) {
+            JsonElement element = config.get(name);
+            if (element != null && !element.isJsonNull()) {
+                return element.getAsInt();
+            }
+        }
+        return defaultValue;
+    }
+
+    private List<String> splitTextIntoChunks(String text, ChunkConfig config) {
+        String normalizedText = text.replace("\r\n", "\n").trim();
+        List<String> chunks = new ArrayList<>();
+        int start = 0;
+        while (start < normalizedText.length()) {
+            int end = Math.min(start + config.chunkSize(), normalizedText.length());
+            String chunk = normalizedText.substring(start, end).trim();
+            if (StrUtil.isNotBlank(chunk)) {
+                chunks.add(chunk);
+            }
+            if (end >= normalizedText.length()) {
+                break;
+            }
+            start = end - config.overlapSize();
+        }
+        return chunks;
+    }
+
+    private void markDocumentChunkFailed(String docId) {
+        knowledgeDocumentMapper.updateById(KnowledgeDocumentDO.builder()
+                .id(docId)
+                .status(DocumentStatus.FAILED.getCode())
+                .updatedBy(currentUserId())
+                .build());
     }
 
 
@@ -357,6 +540,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private String currentUserId() {
         return UserContext.getUserContext() == null ? null : UserContext.getUserContext().getUserId();
+    }
+
+    private record ChunkConfig(int chunkSize, int overlapSize) {
     }
 
     private record UrlMultipartFile(String name, String originalFilename, String contentType, byte[] bytes) implements MultipartFile {
