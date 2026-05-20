@@ -2,6 +2,7 @@ package org.puregxl.site.bootstrap.knowledge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
@@ -16,11 +17,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeBaseDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeChunkDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentDO;
+import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentScheduleDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentScheduleExecDO;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeBaseMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeChunkMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentScheduleExecMapper;
+import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentScheduleMapper;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeDocumentPageRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeDocumentUpdateRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeDocumentUploadRequest;
@@ -38,6 +41,7 @@ import org.puregxl.site.framework.exception.ServiceException;
 import org.puregxl.site.framework.mq.productor.MessageQueueProducer;
 import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -47,6 +51,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLConnection;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -72,6 +78,8 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final MessageQueueProducer messageQueueProducer;
 
     private final KnowledgeDocumentScheduleExecMapper scheduleExecMapper;
+
+    private final KnowledgeDocumentScheduleMapper scheduleMapper;
 
     private final EmbeddingService embeddingService;
 
@@ -146,6 +154,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ServiceException("更新文档文件地址失败");
         }
         document.setFileUrl(fileUrl);
+
         return BeanUtil.toBean(document, KnowledgeDocumentResponse.class);
     }
 
@@ -159,6 +168,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ClientException("当前接口仅支持 chunk 处理模式");
         }
 
+        syncDocumentSchedule(document);
         KnowledgeDocumentChunkEvent event = KnowledgeDocumentChunkEvent.builder()
                 .docId(document.getId())
                 .kbId(document.getKbId())
@@ -212,6 +222,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         if (updated != 1) {
             throw new ServiceException("删除文档失败");
         }
+        disableDocumentSchedule(docId);
 
         // 删除文档时同步逻辑删除其下 chunk，避免列表和检索侧继续读到孤立分块。
         knowledgeChunkMapper.update(null, Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
@@ -251,6 +262,17 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         if (updated != 1) {
             throw new ServiceException("更新文档失败");
         }
+        KnowledgeDocumentDO scheduleDocument = KnowledgeDocumentDO.builder()
+                .id(document.getId())
+                .kbId(document.getKbId())
+                .scheduleEnabled(requestParam.getScheduleEnabled() == null
+                        ? document.getScheduleEnabled()
+                        : toFlag(requestParam.getScheduleEnabled()))
+                .scheduleCron(requestParam.getScheduleCron() == null
+                        ? document.getScheduleCron()
+                        : requestParam.getScheduleCron())
+                .build();
+        syncDocumentSchedule(scheduleDocument);
     }
 
     @Override
@@ -450,6 +472,74 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .build());
     }
 
+    /**
+     * 同步文档定时任务配置。
+     * <p>
+     * 文档表保存用户配置，schedule 表保存调度运行状态。上传/更新文档时在同一个本地事务内同步 schedule，
+     * 这样调度器只需要扫描 schedule 表，不必每轮重新解释所有文档配置。
+     */
+    private void syncDocumentSchedule(KnowledgeDocumentDO document) {
+        if (!Integer.valueOf(1).equals(document.getScheduleEnabled()) || StrUtil.isBlank(document.getScheduleCron())) {
+            disableDocumentSchedule(document.getId());
+            return;
+        }
+        Date nextRunTime = nextRunTime(document.getScheduleCron(), new Date());
+        KnowledgeDocumentScheduleDO existing = scheduleMapper.selectOne(new QueryWrapper<KnowledgeDocumentScheduleDO>()
+                .eq("doc_id", document.getId())
+                .last("limit 1"));
+        if (existing == null) {
+            KnowledgeDocumentScheduleDO schedule = KnowledgeDocumentScheduleDO.builder()
+                    .docId(document.getId())
+                    .kbId(document.getKbId())
+                    .cronExpr(document.getScheduleCron().trim())
+                    .enabled(1)
+                    .nextRunTime(nextRunTime)
+                    .build();
+            int inserted = scheduleMapper.insert(schedule);
+            if (inserted != 1) {
+                throw new ServiceException("创建文档定时任务失败");
+            }
+            return;
+        }
+        KnowledgeDocumentScheduleDO update = KnowledgeDocumentScheduleDO.builder()
+                .id(existing.getId())
+                .kbId(document.getKbId())
+                .cronExpr(document.getScheduleCron().trim())
+                .enabled(1)
+                .nextRunTime(nextRunTime)
+                .lastError(null)
+                .build();
+        int updated = scheduleMapper.updateById(update);
+        if (updated != 1) {
+            throw new ServiceException("更新文档定时任务失败");
+        }
+    }
+
+    /**
+     * 禁用文档定时任务。
+     * <p>
+     * 文档删除或关闭定时时只禁用 schedule 记录，保留历史运行状态和执行流水，方便后续排查。
+     */
+    private void disableDocumentSchedule(String docId) {
+        scheduleMapper.update(null, new UpdateWrapper<KnowledgeDocumentScheduleDO>()
+                .eq("doc_id", docId)
+                .set("enabled", 0)
+                .set("lock_owner", null)
+                .set("lock_until", null));
+    }
+
+    private Date nextRunTime(String cronExpr, Date baseTime) {
+        try {
+            LocalDateTime base = LocalDateTime.ofInstant(baseTime.toInstant(), ZoneId.systemDefault());
+            LocalDateTime next = CronExpression.parse(cronExpr.trim()).next(base);
+            if (next == null) {
+                throw new IllegalArgumentException("无法计算下一次执行时间");
+            }
+            return Date.from(next.atZone(ZoneId.systemDefault()).toInstant());
+        } catch (Exception ex) {
+            throw new ClientException("定时表达式格式错误");
+        }
+    }
 
     private KnowledgeDocumentDO getDocumentDO(String docId) {
         if (StrUtil.isBlank(docId)) {

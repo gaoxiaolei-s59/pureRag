@@ -10,6 +10,7 @@ import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeBaseMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeChunkMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentScheduleExecMapper;
+import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentScheduleMapper;
 import org.puregxl.site.bootstrap.knowledge.enums.DocumentStatus;
 import org.puregxl.site.bootstrap.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import org.puregxl.site.bootstrap.knowledge.service.resource.FileParseService;
@@ -49,6 +50,7 @@ class KnowledgeDocumentServiceImplTest {
         KnowledgeVectorResourceService vectorResourceService = mock(KnowledgeVectorResourceService.class);
         MessageQueueProducer messageQueueProducer = mock(MessageQueueProducer.class);
         KnowledgeDocumentScheduleExecMapper scheduleExecMapper = mock(KnowledgeDocumentScheduleExecMapper.class);
+        KnowledgeDocumentScheduleMapper scheduleMapper = mock(KnowledgeDocumentScheduleMapper.class);
         EmbeddingService embeddingService = mock(EmbeddingService.class);
         KnowledgeDocumentServiceImpl service = new KnowledgeDocumentServiceImpl(
                 knowledgeBaseMapper,
@@ -59,6 +61,7 @@ class KnowledgeDocumentServiceImplTest {
                 vectorResourceService,
                 messageQueueProducer,
                 scheduleExecMapper,
+                scheduleMapper,
                 embeddingService);
 
         KnowledgeDocumentDO document = KnowledgeDocumentDO.builder()
@@ -116,6 +119,7 @@ class KnowledgeDocumentServiceImplTest {
         KnowledgeVectorResourceService vectorResourceService = mock(KnowledgeVectorResourceService.class);
         MessageQueueProducer messageQueueProducer = mock(MessageQueueProducer.class);
         KnowledgeDocumentScheduleExecMapper scheduleExecMapper = mock(KnowledgeDocumentScheduleExecMapper.class);
+        KnowledgeDocumentScheduleMapper scheduleMapper = mock(KnowledgeDocumentScheduleMapper.class);
         EmbeddingService embeddingService = mock(EmbeddingService.class);
         KnowledgeDocumentServiceImpl service = new KnowledgeDocumentServiceImpl(
                 knowledgeBaseMapper,
@@ -126,6 +130,7 @@ class KnowledgeDocumentServiceImplTest {
                 vectorResourceService,
                 messageQueueProducer,
                 scheduleExecMapper,
+                scheduleMapper,
                 embeddingService);
 
         KnowledgeDocumentDO document = KnowledgeDocumentDO.builder()
@@ -186,6 +191,7 @@ class KnowledgeDocumentServiceImplTest {
         KnowledgeVectorResourceService vectorResourceService = mock(KnowledgeVectorResourceService.class);
         MessageQueueProducer messageQueueProducer = mock(MessageQueueProducer.class);
         KnowledgeDocumentScheduleExecMapper scheduleExecMapper = mock(KnowledgeDocumentScheduleExecMapper.class);
+        KnowledgeDocumentScheduleMapper scheduleMapper = mock(KnowledgeDocumentScheduleMapper.class);
         EmbeddingService embeddingService = mock(EmbeddingService.class);
         KnowledgeDocumentServiceImpl service = new KnowledgeDocumentServiceImpl(
                 knowledgeBaseMapper,
@@ -196,6 +202,7 @@ class KnowledgeDocumentServiceImplTest {
                 vectorResourceService,
                 messageQueueProducer,
                 scheduleExecMapper,
+                scheduleMapper,
                 embeddingService);
 
         KnowledgeDocumentDO document = KnowledgeDocumentDO.builder()

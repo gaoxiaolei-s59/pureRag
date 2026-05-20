@@ -1,6 +1,7 @@
 package org.puregxl.site.bootstrap.knowledge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -8,12 +9,15 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeBaseDO;
+import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentDO;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeBaseMapper;
+import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeBaseCreateRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeBasePageRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeBaseUpdateRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.response.KnowledgeBaseResponse;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeBaseService;
+import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeVectorResourceService;
 import org.puregxl.site.bootstrap.user.context.UserContext;
@@ -23,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -31,6 +37,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeVectorResourceService vectorResourceService;
     private final KnowledgeStorageResourceService storageResourceService;
+    private final KnowledgeDocumentService knowledgeDocumentService;
+    private final KnowledgeDocumentMapper knowledgeDocumentMapper;
 
     /**
      * 创建对应的KnowledgeBase - Milvus - Rustfs
@@ -122,8 +130,14 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             throw new ServiceException("知识库不存在");
         }
 
-        //TODO 扩展点 - 后续可以更改为有文档就不支持删除
 
+        LambdaQueryWrapper<KnowledgeDocumentDO> knowledgeDocumentEq = Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
+                .eq(KnowledgeDocumentDO::getKbId, kbId);
+
+        List<KnowledgeDocumentDO> knowledgeDocumentDOS = knowledgeDocumentMapper.selectList(knowledgeDocumentEq);
+        if (!knowledgeDocumentDOS.isEmpty()) {
+            throw new ClientException("不能删除有文档的知识库");
+        }
         knowledgeBaseDO.setDelFlag(1);
         knowledgeBaseDO.setUpdatedBy(UserContext.getUserContext().getUserId());
         knowledgeBaseMapper.updateById(knowledgeBaseDO);
@@ -142,12 +156,21 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         if (!StringUtils.hasText(kbId)) {
             throw new ClientException("知识库 ID 不能为空");
         }
-        //TODO 文档数量
+
+        LambdaQueryWrapper<KnowledgeDocumentDO> knowledgeDocumentEq =
+                Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
+                        .eq(KnowledgeDocumentDO::getKbId, kbId);
+
+        Long documentCount = knowledgeDocumentMapper.selectCount(knowledgeDocumentEq);
+
         KnowledgeBaseDO knowledgeBaseDO = knowledgeBaseMapper.selectById(kbId);
         if (ObjectUtils.isEmpty(knowledgeBaseDO)) {
             throw new ServiceException("知识库不存在");
         }
-        return BeanUtil.toBean(knowledgeBaseDO, KnowledgeBaseResponse.class);
+        KnowledgeBaseResponse bean = BeanUtil.toBean(knowledgeBaseDO, KnowledgeBaseResponse.class);
+        bean.setDocumentCount(documentCount);
+
+        return bean;
     }
 
     /**
