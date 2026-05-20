@@ -22,7 +22,12 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /**
  * RustFS/S3 兼容对象存储资源服务，封装 bucket 创建、文件上传和回滚逻辑。
@@ -142,19 +147,56 @@ public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageRe
     }
 
     private String buildRustfsUrl(String bucketName, String objectKey) {
-        return RUSTFS_URL_SCHEME + "://" + bucketName + "/" + objectKey;
+        return RUSTFS_URL_SCHEME + "://" + bucketName + "/" + encodeObjectKey(objectKey);
     }
 
     private RustfsObjectLocation parseRustfsUrl(String fileUrl) {
-        URI uri = URI.create(fileUrl);
-        if (!RUSTFS_URL_SCHEME.equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+        // RustFS 内部地址允许对象 Key 使用中文、空格等文件名字符。新地址会编码路径；历史地址可能未编码，
+        // 因此先尝试标准 URI 解析，失败后退回到 scheme 前缀切分，保证旧数据仍可被读取。
+        RustfsObjectLocation objectLocation = parseByUri(fileUrl);
+        if (objectLocation != null) {
+            return objectLocation;
+        }
+        String prefix = RUSTFS_URL_SCHEME + "://";
+        if (fileUrl == null || !fileUrl.regionMatches(true, 0, prefix, 0, prefix.length())) {
             throw new ServiceException("RustFS 文件地址格式不正确：" + fileUrl);
         }
-        String objectKey = uri.getPath() == null || uri.getPath().length() <= 1 ? null : uri.getPath().substring(1);
-        if (objectKey == null || objectKey.isBlank()) {
+        String location = fileUrl.substring(prefix.length());
+        int slashIndex = location.indexOf('/');
+        if (slashIndex <= 0 || slashIndex == location.length() - 1) {
             throw new ServiceException("RustFS 文件地址缺少对象 Key：" + fileUrl);
         }
-        return new RustfsObjectLocation(uri.getHost(), objectKey);
+        return new RustfsObjectLocation(location.substring(0, slashIndex), decodeObjectKey(location.substring(slashIndex + 1)));
+    }
+
+    private RustfsObjectLocation parseByUri(String fileUrl) {
+        try {
+            URI uri = URI.create(fileUrl);
+            if (!RUSTFS_URL_SCHEME.equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+                return null;
+            }
+            String objectKey = uri.getRawPath() == null || uri.getRawPath().length() <= 1
+                    ? null
+                    : uri.getRawPath().substring(1);
+            if (objectKey == null || objectKey.isBlank()) {
+                throw new ServiceException("RustFS 文件地址缺少对象 Key：" + fileUrl);
+            }
+            return new RustfsObjectLocation(uri.getHost(), decodeObjectKey(objectKey));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private String encodeObjectKey(String objectKey) {
+        return Arrays.stream(objectKey.split("/", -1))
+                .map(segment -> URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20"))
+                .collect(Collectors.joining("/"));
+    }
+
+    private String decodeObjectKey(String objectKey) {
+        return Arrays.stream(objectKey.split("/", -1))
+                .map(segment -> URLDecoder.decode(segment, StandardCharsets.UTF_8))
+                .collect(Collectors.joining("/"));
     }
 
     private String resolveFilename(String objectKey) {

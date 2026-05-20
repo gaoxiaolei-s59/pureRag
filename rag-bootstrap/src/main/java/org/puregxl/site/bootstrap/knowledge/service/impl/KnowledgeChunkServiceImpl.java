@@ -2,6 +2,8 @@ package org.puregxl.site.bootstrap.knowledge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeChunkDO;
@@ -13,6 +15,7 @@ import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeChunkCreateRequ
 import org.puregxl.site.bootstrap.knowledge.dto.request.KnowledgeChunkUpdateRequest;
 import org.puregxl.site.bootstrap.knowledge.dto.response.KnowledgeChunkResponse;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeChunkService;
+import org.puregxl.site.bootstrap.knowledge.util.KnowledgeChunkHashUtils;
 import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.exception.ServiceException;
@@ -34,13 +37,17 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         if (request == null || StrUtil.isBlank(request.getContent())) {
             throw new ClientException("分块内容不能为空");
         }
+        String contentHash = KnowledgeChunkHashUtils.sha256(request.getContent());
+        if (existsContentHash(docId, contentHash, null)) {
+            throw new ClientException("Chunk 内容已存在");
+        }
 
         KnowledgeChunkDO chunk = KnowledgeChunkDO.builder()
                 .kbId(document.getKbId())
                 .docId(docId)
                 .chunkIndex(request.getIndex())
                 .content(request.getContent())
-                .contentHash(Integer.toHexString(request.getContent().hashCode()))
+                .contentHash(contentHash)
                 .charCount(request.getContent().length())
                 .enabled(1)
                 .createdBy(currentUserId())
@@ -60,11 +67,15 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         if (request == null || StrUtil.isBlank(request.getContent())) {
             throw new ClientException("分块内容不能为空");
         }
+        String contentHash = KnowledgeChunkHashUtils.sha256(request.getContent());
+        if (existsContentHash(docId, contentHash, chunk.getId())) {
+            throw new ClientException("Chunk 内容已存在");
+        }
 
         KnowledgeChunkDO update = KnowledgeChunkDO.builder()
                 .id(chunk.getId())
                 .content(request.getContent())
-                .contentHash(Integer.toHexString(request.getContent().hashCode()))
+                .contentHash(contentHash)
                 .charCount(request.getContent().length())
                 .updatedBy(currentUserId())
                 .build();
@@ -141,12 +152,28 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     }
 
     private void refreshDocumentChunkCount(String docId) {
-        Long count = knowledgeChunkMapper.selectCount(Wrappers.lambdaQuery(KnowledgeChunkDO.class)
-                .eq(KnowledgeChunkDO::getDocId, docId));
-        knowledgeDocumentMapper.update(null, Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
-                .eq(KnowledgeDocumentDO::getId, docId)
-                .set(KnowledgeDocumentDO::getChunkCount, count == null ? 0 : count.intValue())
-                .set(KnowledgeDocumentDO::getUpdatedBy, currentUserId()));
+        Long count = knowledgeChunkMapper.selectCount(new QueryWrapper<KnowledgeChunkDO>()
+                .eq("doc_id", docId));
+        knowledgeDocumentMapper.update(null, new UpdateWrapper<KnowledgeDocumentDO>()
+                .eq("id", docId)
+                .set("chunk_count", count == null ? 0 : count.intValue())
+                .set("updated_by", currentUserId()));
+    }
+
+    /**
+     * 判断同一文档下是否已经存在相同内容哈希。
+     * <p>
+     * contentHash 的去重边界限定在 docId 内，避免不同文档包含相同段落时互相影响；更新时排除当前 chunk 自己。
+     */
+    private boolean existsContentHash(String docId, String contentHash, String excludeChunkId) {
+        QueryWrapper<KnowledgeChunkDO> wrapper = new QueryWrapper<KnowledgeChunkDO>()
+                .eq("doc_id", docId)
+                .eq("content_hash", contentHash);
+        if (StrUtil.isNotBlank(excludeChunkId)) {
+            wrapper.ne("id", excludeChunkId);
+        }
+        Long count = knowledgeChunkMapper.selectCount(wrapper);
+        return count != null && count > 0;
     }
 
     private String currentUserId() {

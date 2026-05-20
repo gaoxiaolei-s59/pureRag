@@ -35,6 +35,8 @@ import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.FileParseService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
 import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeVectorResourceService;
+import org.puregxl.site.bootstrap.knowledge.util.KnowledgeChunkHashUtils;
+import org.puregxl.site.bootstrap.knowledge.util.KnowledgeContentHashUtils;
 import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.exception.ServiceException;
@@ -62,6 +64,8 @@ import java.util.Locale;
 @RequiredArgsConstructor
 @Slf4j
 public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
+
+    private static final String MANUAL_SCHEDULE_ID = "manual";
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
 
@@ -114,6 +118,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         }
 
         MultipartFile uploadFile = buildUploadFile(sourceType, requestParam, file);
+        String documentContentHash = buildDocumentContentHash(uploadFile);
         String docName = buildDocumentName(sourceType, requestParam, file);
         KnowledgeDocumentDO document = KnowledgeDocumentDO.builder()
                 .kbId(kbId)
@@ -121,6 +126,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .sourceType(sourceType)
                 .sourceLocation(requestParam.getSourceLocation())
                 .scheduleEnabled(toFlag(requestParam.getScheduleEnabled()))
+                .contentHash(documentContentHash)
                 .scheduleCron(requestParam.getScheduleCron())
                 .enabled(1)
                 .chunkCount(0)
@@ -193,7 +199,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ServiceException("开始文档分块失败");
         }
         KnowledgeDocumentScheduleExecDO exec = KnowledgeDocumentScheduleExecDO.builder()
-                .scheduleId(null)
+                .scheduleId(MANUAL_SCHEDULE_ID)
                 .docId(document.getId())
                 .kbId(document.getKbId())
                 .status(DocumentStatus.RUNNING.getCode())
@@ -201,6 +207,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .startTime(new Date())
                 .fileName(document.getDocName())
                 .fileSize(document.getFileSize())
+                .contentHash(document.getContentHash())
                 .build();
         int inserted = scheduleExecMapper.insert(exec);
         if (inserted != 1) {
@@ -307,10 +314,15 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         KnowledgeDocumentDO document = getDocumentDO(docId);
         try {
             if (StrUtil.isBlank(document.getFileUrl())) {
+                document.setStatus(DocumentStatus.FAILED.getCode());
+                knowledgeDocumentMapper.updateById(document);
                 throw new ClientException("文档文件地址不能为空");
+
             }
             String text = fileParseService.parseFileByTika(document.getFileUrl());
             if (StrUtil.isBlank(text)) {
+                document.setStatus(DocumentStatus.FAILED.getCode());
+                knowledgeDocumentMapper.updateById(document);
                 throw new ClientException("文档解析内容为空");
             }
             KnowledgeBaseDO knowledgeBase = getKnowledgeBase(document);
@@ -319,30 +331,42 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             ChunkConfig chunkConfig = parseChunkConfig(document);
             List<String> chunks = splitTextIntoChunks(text, chunkConfig);
             if (chunks.isEmpty()) {
+                document.setStatus(DocumentStatus.FAILED.getCode());
+                knowledgeDocumentMapper.updateById(document);
                 throw new ClientException("文档解析内容为空");
             }
             List<List<Float>> embeddings = embeddingService.embedBatch(chunks, embeddingModel);
             if (embeddings.size() != chunks.size()) {
+                document.setStatus(DocumentStatus.FAILED.getCode());
+                knowledgeDocumentMapper.updateById(document);
                 throw new ServiceException("Embedding 结果数量与 Chunk 数量不一致");
             }
 
             // 重新分块时先清理向量库旧数据，再废弃 MySQL 旧 Chunk，保证检索侧不会读到同文档旧版本内容。
             vectorResourceService.deleteDocumentChunks(knowledgeBase.getCollectionName(), document.getId());
+
             knowledgeChunkMapper.update(null, new UpdateWrapper<KnowledgeChunkDO>()
                     .eq("doc_id", document.getId())
                     .set("deleted", 1)
                     .set("updated_by", currentUserId()));
 
             List<KnowledgeVectorResourceService.KnowledgeVectorChunk> vectorChunks = new ArrayList<>(chunks.size());
+            int insertedChunkCount = 0;
             for (int i = 0; i < chunks.size(); i++) {
                 String content = chunks.get(i);
+                String contentHash = KnowledgeChunkHashUtils.sha256(content);
+                if (existsContentHash(document.getId(), contentHash)) {
+                    log.info("[文档分块] 跳过重复 Chunk，docId={}, chunkIndex={}, contentHash={}",
+                            document.getId(), i, contentHash);
+                    continue;
+                }
                 KnowledgeChunkDO chunk = KnowledgeChunkDO.builder()
                         .id(IdWorker.getIdStr())
                         .kbId(document.getKbId())
                         .docId(document.getId())
                         .chunkIndex(i)
                         .content(content)
-                        .contentHash(Integer.toHexString(content.hashCode()))
+                        .contentHash(contentHash)
                         .charCount(content.length())
                         .enabled(1)
                         .createdBy(currentUserId())
@@ -352,6 +376,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 if (inserted != 1) {
                     throw new ServiceException("写入文档 Chunk 失败");
                 }
+                insertedChunkCount++;
                 vectorChunks.add(new KnowledgeVectorResourceService.KnowledgeVectorChunk(
                         chunk.getId(),
                         document.getId(),
@@ -364,7 +389,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
                     .id(document.getId())
                     .status(DocumentStatus.SUCCESS.getCode())
-                    .chunkCount(chunks.size())
+                    .chunkCount(insertedChunkCount)
                     .updatedBy(currentUserId())
                     .build();
 
@@ -470,6 +495,19 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .status(DocumentStatus.FAILED.getCode())
                 .updatedBy(currentUserId())
                 .build());
+    }
+
+    /**
+     * 判断当前文档是否已经存在相同内容哈希的 Chunk。
+     * <p>
+     * executeChunk 会先逻辑删除旧 Chunk，所以这里主要用于本次切块过程中去掉重复内容，避免相同段落重复进入
+     * MySQL 和 Milvus。
+     */
+    private boolean existsContentHash(String docId, String contentHash) {
+        Long count = knowledgeChunkMapper.selectCount(new QueryWrapper<KnowledgeChunkDO>()
+                .eq("doc_id", docId)
+                .eq("content_hash", contentHash));
+        return count != null && count > 0;
     }
 
     /**
@@ -594,6 +632,14 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw ex;
         } catch (Exception ex) {
             throw new ServiceException("拉取 URL 文档失败：" + ex.getMessage());
+        }
+    }
+
+    private String buildDocumentContentHash(MultipartFile file) {
+        try {
+            return KnowledgeContentHashUtils.sha256(file.getBytes());
+        } catch (IOException ex) {
+            throw new ServiceException("生成文档内容哈希失败：" + ex.getMessage());
         }
     }
 

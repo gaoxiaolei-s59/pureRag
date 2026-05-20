@@ -53,13 +53,22 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 sa-token:
+  # 登录凭证名称，前端/Apifox 请求头需要使用 s-token: ${token}，Cookie 也会使用同名 key。
+  token-name: s-token
+  # token 有效期，单位秒：30 天。
   timeout: 2592000
+  # 临时有效期关闭，避免长 token 被空闲时间提前踢下线。
+  active-timeout: -1
+  is-read-header: true
+  is-read-cookie: true
+  is-lasting-cookie: true
+  auto-renew: true
 
 ai:
   providers:
     bailian:
       url: https://dashscope.aliyuncs.com
-      api-key: ${BAILIAN_API_KEY:}
+      api-key: sk-fa84b1f526424030b79985d311710146
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
@@ -106,7 +115,7 @@ ai:
       - id: qwen-emb-8b
         provider: siliconflow
         model: Qwen/Qwen3-Embedding-8B
-        dimension: ${rag.vector.milvus.dimension}
+        dimension: 4096
         priority: 1
 
   rerank:

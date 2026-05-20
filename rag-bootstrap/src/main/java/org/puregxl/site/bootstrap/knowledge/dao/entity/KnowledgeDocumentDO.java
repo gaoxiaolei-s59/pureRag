@@ -47,6 +47,11 @@ public class KnowledgeDocumentDO {
     private Integer scheduleEnabled;
 
     /**
+     * 文档内容 HASH 用于去重逻辑
+     */
+    private String contentHash;
+
+    /**
      * 定时表达式（cron）
      */
     private String scheduleCron;

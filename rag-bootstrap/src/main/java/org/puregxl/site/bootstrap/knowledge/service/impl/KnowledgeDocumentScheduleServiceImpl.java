@@ -1,25 +1,40 @@
 package org.puregxl.site.bootstrap.knowledge.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeBaseDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentDO;
 import org.puregxl.site.bootstrap.knowledge.dao.entity.KnowledgeDocumentScheduleDO;
+import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeBaseMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import org.puregxl.site.bootstrap.knowledge.dao.mapper.KnowledgeDocumentScheduleMapper;
 import org.puregxl.site.bootstrap.knowledge.enums.DocumentStatus;
+import org.puregxl.site.bootstrap.knowledge.enums.SourceType;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentScheduleService;
+import org.puregxl.site.bootstrap.knowledge.service.resource.KnowledgeStorageResourceService;
+import org.puregxl.site.bootstrap.knowledge.util.KnowledgeContentHashUtils;
+import org.puregxl.site.framework.exception.ClientException;
+import org.puregxl.site.framework.exception.ServiceException;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.scheduling.support.CronExpression;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLConnection;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -33,7 +48,9 @@ public class KnowledgeDocumentScheduleServiceImpl implements KnowledgeDocumentSc
 
     private final KnowledgeDocumentScheduleMapper scheduleMapper;
     private final KnowledgeDocumentMapper documentMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeDocumentService documentService;
+    private final KnowledgeStorageResourceService storageResourceService;
     private final RedissonClient redissonClient;
 
     /**
@@ -85,6 +102,9 @@ public class KnowledgeDocumentScheduleServiceImpl implements KnowledgeDocumentSc
                 return;
             }
             Date nextRunTime = nextRunTime(schedule.getCronExpr(), now);
+            if (refreshUrlDocumentIfUnchanged(schedule, document, now, nextRunTime)) {
+                return;
+            }
             documentService.startChunkKnowledgeDocument(schedule.getDocId());
             releaseSchedule(schedule.getId(), KnowledgeDocumentScheduleDO.builder()
                     .lastRunTime(now)
@@ -105,6 +125,63 @@ public class KnowledgeDocumentScheduleServiceImpl implements KnowledgeDocumentSc
                 lock.unlock();
             }
         }
+    }
+
+    /**
+     * URL 来源文档的定时拉取去重流程。
+     * <p>
+     * 定时任务真正触发分块前，先重新下载源 URL 文件并计算文件级 SHA-256；如果和文档表记录的
+     * contentHash 一致，说明源文件没有变化，本轮只推进 nextRunTime，不发送 MQ，也不会重建 MySQL Chunk
+     * 和向量库数据。如果内容发生变化，则先覆盖 RustFS 文件并更新文档表文件元信息，再继续派发分块任务。
+     *
+     * @return true 表示本轮内容未变化，已经完成跳过处理；false 表示内容有变化或非 URL 来源，需要继续执行分块。
+     */
+    private boolean refreshUrlDocumentIfUnchanged(KnowledgeDocumentScheduleDO schedule,
+                                                  KnowledgeDocumentDO document,
+                                                  Date now,
+                                                  Date nextRunTime) {
+        if (!SourceType.URL.getCode().equalsIgnoreCase(document.getSourceType())) {
+            return false;
+        }
+        if (StrUtil.isBlank(document.getSourceLocation())) {
+            throw new ClientException("URL 来源文档缺少来源地址");
+        }
+
+        MultipartFile latestFile = downloadUrlFile(document.getSourceLocation().trim());
+        String latestContentHash = buildDocumentContentHash(latestFile);
+        if (DocumentStatus.SUCCESS.getCode().equals(document.getStatus())
+                && StrUtil.isNotBlank(document.getContentHash())
+                && document.getContentHash().equals(latestContentHash)) {
+            log.info("[文档定时任务] URL 文档内容未变化，跳过分块，scheduleId={}, docId={}",
+                    schedule.getId(), document.getId());
+            releaseSchedule(schedule.getId(), KnowledgeDocumentScheduleDO.builder()
+                    .lastRunTime(now)
+                    .lastStatus(DocumentStatus.SUCCESS.getCode())
+                    .lastError("文档内容未变化，跳过执行")
+                    .nextRunTime(nextRunTime)
+                    .build());
+            return true;
+        }
+
+        KnowledgeBaseDO knowledgeBase = knowledgeBaseMapper.selectById(document.getKbId());
+        if (knowledgeBase == null) {
+            throw new ClientException("知识库不存在");
+        }
+        String objectKey = buildDocumentObjectKey(document.getId(), latestFile.getOriginalFilename());
+        String fileUrl = storageResourceService.uploadDocument(knowledgeBase.getCollectionName(), objectKey, latestFile);
+        KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
+                .id(document.getId())
+                .fileUrl(fileUrl)
+                .contentHash(latestContentHash)
+                .fileSize(latestFile.getSize())
+                .fileType(resolveFileType(latestFile.getOriginalFilename()))
+                .status(DocumentStatus.PENDING.getCode())
+                .build();
+        int updated = documentMapper.updateById(update);
+        if (updated != 1) {
+            throw new ServiceException("更新 URL 文档文件信息失败");
+        }
+        return false;
     }
 
     private void disableSchedule(KnowledgeDocumentScheduleDO schedule, String reason) {
@@ -160,5 +237,95 @@ public class KnowledgeDocumentScheduleServiceImpl implements KnowledgeDocumentSc
             throw new IllegalArgumentException("无法计算下一次执行时间");
         }
         return Date.from(next.atZone(ZoneId.systemDefault()).toInstant());
+    }
+
+    private MultipartFile downloadUrlFile(String sourceLocation) {
+        try (InputStream inputStream = URI.create(sourceLocation).toURL().openStream()) {
+            byte[] bytes = inputStream.readAllBytes();
+            if (bytes.length == 0) {
+                throw new ClientException("URL 文档内容为空");
+            }
+            String filename = resolveUrlFilename(sourceLocation);
+            String contentType = StrUtil.blankToDefault(URLConnection.guessContentTypeFromName(filename),
+                    "application/octet-stream");
+            return new UrlMultipartFile("file", filename, contentType, bytes);
+        } catch (ClientException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new ServiceException("拉取 URL 文档失败：" + ex.getMessage());
+        }
+    }
+
+    private String buildDocumentContentHash(MultipartFile file) {
+        try {
+            return KnowledgeContentHashUtils.sha256(file.getBytes());
+        } catch (IOException ex) {
+            throw new ServiceException("生成文档内容哈希失败：" + ex.getMessage());
+        }
+    }
+
+    private String buildDocumentObjectKey(String docId, String docName) {
+        String filename = docName.replace("\\", "_").replace("/", "_");
+        return "docs/" + docId + "/" + filename;
+    }
+
+    private String resolveUrlFilename(String sourceLocation) {
+        URI uri = URI.create(sourceLocation);
+        String path = uri.getPath();
+        if (StrUtil.isBlank(path) || path.endsWith("/")) {
+            return "url-document";
+        }
+        String filename = path.substring(path.lastIndexOf('/') + 1);
+        return StrUtil.isBlank(filename) ? "url-document" : filename;
+    }
+
+    private String resolveFileType(String filename) {
+        if (StrUtil.isBlank(filename) || !filename.contains(".")) {
+            return null;
+        }
+        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    private record UrlMultipartFile(String name, String originalFilename, String contentType, byte[] bytes) implements MultipartFile {
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return bytes.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return bytes.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(bytes);
+        }
+
+        @Override
+        public void transferTo(java.io.File dest) throws IOException, IllegalStateException {
+            throw new UnsupportedOperationException("URL 文档定时拉取流程不需要 transferTo");
+        }
     }
 }
