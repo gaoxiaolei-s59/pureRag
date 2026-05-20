@@ -29,7 +29,7 @@ rag:
     milvus:
       uri: http://localhost:19530
       collection-name: rag_default_store
-      dimension: 1536
+      dimension: 4096
       metric-type: COSINE
       initialize-schema: true
 
