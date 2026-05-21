@@ -10,6 +10,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.junit.jupiter.api.Test;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -88,13 +89,11 @@ public class test {
         JsonObject message = new JsonObject();
         message.addProperty("role", role);
         message.addProperty("content", content);
+
         return message;
     }
 
 
-
-
-
-
+    
 
 }

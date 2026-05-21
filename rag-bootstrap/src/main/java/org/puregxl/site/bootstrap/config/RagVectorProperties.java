@@ -48,7 +48,7 @@ public class RagVectorProperties {
          * 向量维度，需要和 embedding 模型输出保持一致。
          */
         @Min(1)
-        private Integer dimension = 1536;
+        private Integer dimension = 4096;
 
         /**
          * 相似度度量方式。
