@@ -7,6 +7,7 @@ import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.support.RocketMQConsumerLifecycleListener;
 import org.puregxl.site.bootstrap.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import org.puregxl.site.bootstrap.knowledge.service.KnowledgeDocumentService;
+import org.puregxl.site.bootstrap.rag.Idempotent.IdempotentSubmit;
 import org.puregxl.site.bootstrap.user.context.UserContext;
 import org.puregxl.site.bootstrap.user.context.UserInfoDTO;
 import org.puregxl.site.framework.mq.MessageWrapper;
@@ -29,6 +30,7 @@ public class KnowledgeDocumentChunkConsumer implements RocketMQListener<MessageW
     private final KnowledgeDocumentService documentService;
 
     @Override
+    @IdempotentSubmit(key = "#message.uuid", message = "文档分块任务正在处理或已处理")
     public void onMessage(MessageWrapper<KnowledgeDocumentChunkEvent> message) {
         KnowledgeDocumentChunkEvent event = message.getBody();
 

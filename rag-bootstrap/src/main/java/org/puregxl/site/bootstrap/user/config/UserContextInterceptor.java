@@ -1,6 +1,7 @@
 package org.puregxl.site.bootstrap.user.config;
 
 import cn.dev33.satoken.stp.StpUtil;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.jspecify.annotations.Nullable;
@@ -14,6 +15,11 @@ public class UserContextInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        if (request.getDispatcherType() == DispatcherType.ASYNC || request.getDispatcherType() == DispatcherType.ERROR) {
+            // SSE 超时或异常关闭后，容器可能用异步/错误分发重新进入 MVC；此时 Sa-Token 请求上下文可能已释放。
+            return true;
+        }
+
         // Sa-Token 会按配置从请求头、Cookie 等位置读取 token；未登录时抛出 NotLoginException，由全局异常处理返回统一结果。
         StpUtil.checkLogin();
 
