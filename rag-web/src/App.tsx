@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   BarChart3,
   Bot,
   Brain,
@@ -25,7 +26,8 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
-  UserRound
+  UserRound,
+  X
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -78,10 +80,14 @@ function statusText(status?: string) {
 export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [token, setToken] = useState(getStoredToken());
+  const [tokenDraft, setTokenDraft] = useState(getStoredToken());
   const [userName, setUserName] = useState("admin");
   const [password, setPassword] = useState("123456");
   const [notice, setNotice] = useState("准备就绪");
   const [loading, setLoading] = useState(false);
+  const [createKbOpen, setCreateKbOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [kbDetailOpen, setKbDetailOpen] = useState(false);
 
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [selectedKbId, setSelectedKbId] = useState("");
@@ -181,6 +187,7 @@ export function App() {
     try {
       const response = await login(userName, password);
       setToken(response.token);
+      setTokenDraft(response.token);
       setStoredToken(response.token);
       setNotice("登录成功，s-token 已保存");
       await refreshBases();
@@ -192,12 +199,15 @@ export function App() {
   }
 
   function handleSaveToken() {
-    setStoredToken(token);
-    setNotice(token ? "s-token 已保存" : "s-token 已清空");
-    if (!token) {
+    const nextToken = tokenDraft.trim();
+    setToken(nextToken);
+    setStoredToken(nextToken);
+    setNotice(nextToken ? "s-token 已保存" : "s-token 已清空");
+    if (!nextToken) {
       setBases([]);
       setSelectedKbId("");
       setDocuments([]);
+      setKbDetailOpen(false);
     }
   }
 
@@ -217,6 +227,7 @@ export function App() {
       setNewKbName("");
       setNewKbCollection("");
       setNotice("知识库创建成功");
+      setCreateKbOpen(false);
       await refreshBases();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "创建知识库失败");
@@ -254,6 +265,7 @@ export function App() {
       });
       setNotice("文档已上传");
       setFile(null);
+      setUploadOpen(false);
       await refreshDocuments();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "上传失败");
@@ -342,6 +354,68 @@ export function App() {
     setNotice("已停止当前聊天请求");
   }
 
+  if (!token) {
+    return (
+      <main className="login-shell">
+        <section className="login-hero">
+          <div className="login-brand">
+            <span className="login-brand-mark">
+              <Bot size={28} />
+            </span>
+            <div>
+              <strong>PureAgent</strong>
+              <small>Knowledge Console</small>
+            </div>
+          </div>
+          <div className="login-copy">
+            <span>RAG 智能知识工作台</span>
+            <h1>把知识库、文档分块和智能问答放进一个清爽入口</h1>
+            <p>登录后进入 PureAgent，可以管理知识库、上传文档、触发分块，并直接发起 RAG 问答。</p>
+          </div>
+          <div className="login-feature-strip">
+            <span>知识库管理</span>
+            <span>文档向量化</span>
+            <span>流式问答</span>
+          </div>
+        </section>
+
+        <section className="login-panel">
+          <div>
+            <span className="login-eyebrow">Welcome back</span>
+            <h2>登录 PureAgent</h2>
+            <p>使用账号密码登录，或者粘贴已有 s-token 直接进入。</p>
+          </div>
+
+          <form className="login-form" onSubmit={handleLogin}>
+            <label>
+              <span>用户名</span>
+              <input value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="admin" />
+            </label>
+            <label>
+              <span>密码</span>
+              <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入密码" type="password" />
+            </label>
+            <button type="submit" className="gradient-button" disabled={loading}>
+              {loading ? <Loader2 className="spin" size={17} /> : <LogIn size={17} />}
+              登录并进入
+            </button>
+          </form>
+
+          <div className="login-divider">或</div>
+
+          <div className="login-token-box">
+            <textarea value={tokenDraft} onChange={(event) => setTokenDraft(event.target.value)} placeholder="粘贴 s-token" rows={3} />
+            <button type="button" className="outline-button" onClick={handleSaveToken}>
+              保存 Token
+            </button>
+          </div>
+
+          <p className="login-notice">{notice}</p>
+        </section>
+      </main>
+    );
+  }
+
   if (viewMode === "chat") {
     return (
       <main className="chat-shell">
@@ -351,7 +425,7 @@ export function App() {
               <Bot size={24} />
             </div>
             <div>
-              <strong>Ragent AI 智能体</strong>
+              <strong>PureAgent 智能体</strong>
               <span>Powered by AI</span>
             </div>
           </div>
@@ -412,10 +486,10 @@ export function App() {
           <div className="hero-area">
             <div className="hero-badge">
               <Bot size={16} />
-              RAG 智能问答
+              PureAgent 智能问答
             </div>
             <h1>
-              把问题变成<span>清晰答案</span>
+              把知识变成<span>清晰答案</span>
             </h1>
             <p>结构化提问、知识检索与深度思考，一次对话给出可执行方案</p>
 
@@ -499,9 +573,9 @@ export function App() {
     <main className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          <div className="admin-brand-mark">R</div>
+          <div className="admin-brand-mark">P</div>
           <div>
-            <strong>Ragent AI 管理后台</strong>
+            <strong>PureAgent 管理后台</strong>
             <span>Knowledge Console</span>
           </div>
         </div>
@@ -588,6 +662,10 @@ export function App() {
                 <RefreshCw size={18} />
                 刷新
               </button>
+              <button type="button" className="gradient-button" onClick={() => setCreateKbOpen(true)}>
+                <Plus size={18} />
+                新建知识库
+              </button>
             </div>
           </div>
 
@@ -598,145 +676,226 @@ export function App() {
             <StatCard icon={<Layers3 size={24} />} label="完成文档" value={successDocs} />
           </section>
 
-          <section className="admin-card create-strip">
-            <form className="knowledge-create-form" onSubmit={handleCreateKb}>
-              <input value={newKbName} onChange={(event) => setNewKbName(event.target.value)} placeholder="知识库名称" />
-              <input
-                value={newKbCollection}
-                onChange={(event) => setNewKbCollection(event.target.value)}
-                placeholder="Milvus Collection"
-              />
-              <input value={newKbModel} onChange={(event) => setNewKbModel(event.target.value)} placeholder="嵌入模型" />
-              <button type="submit" className="gradient-button">
-                <Plus size={18} />
-                新建知识库
-              </button>
-            </form>
-          </section>
-
-          <section className="admin-card knowledge-layout">
-            <div className="knowledge-list">
+          {!kbDetailOpen ? (
+            <section className="admin-card knowledge-overview">
               <div className="section-head">
                 <strong>知识库列表</strong>
                 <span>{filteredBases.length} 个</span>
               </div>
-              {filteredBases.length > 0 ? (
-                filteredBases.map((kb) => (
-                  <button
-                    type="button"
-                    className={`knowledge-row ${kb.id === selectedKbId ? "active" : ""}`}
-                    key={kb.id}
-                    onClick={() => setSelectedKbId(kb.id)}
-                  >
-                    <span className="row-icon">
-                      <Database size={18} />
-                    </span>
-                    <span>
-                      <strong>{kb.name}</strong>
-                      <small>{kb.collectionName}</small>
-                    </span>
-                    <b>{kb.documentCount ?? 0}</b>
-                  </button>
-                ))
-              ) : (
-                <div className="empty-panel">暂无知识库，点击上方按钮创建</div>
-              )}
-            </div>
-
-            <div className="document-area">
-              <div className="section-head">
-                <strong>{selectedKb ? `${selectedKb.name} 的文档` : "文档"}</strong>
-                <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
-                  <RefreshCw size={15} />
-                  刷新
-                </button>
-              </div>
-
-              <form className="upload-dock" onSubmit={handleUpload}>
-                <div className="segmented">
-                  <button type="button" className={sourceType === "file" ? "active" : ""} onClick={() => setSourceType("file")}>
-                    文件
-                  </button>
-                  <button type="button" className={sourceType === "url" ? "active" : ""} onClick={() => setSourceType("url")}>
-                    URL
-                  </button>
-                </div>
-                {sourceType === "file" ? (
-                  <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+              <div className="knowledge-card-grid">
+                {filteredBases.length > 0 ? (
+                  filteredBases.map((kb) => (
+                    <button
+                      type="button"
+                      className="knowledge-card"
+                      key={kb.id}
+                      onClick={() => {
+                        setSelectedKbId(kb.id);
+                        setKbDetailOpen(true);
+                      }}
+                    >
+                      <span className="row-icon">
+                        <Database size={20} />
+                      </span>
+                      <span>
+                        <strong>{kb.name}</strong>
+                        <small>{kb.collectionName}</small>
+                      </span>
+                      <b>{kb.documentCount ?? 0}</b>
+                    </button>
+                  ))
                 ) : (
-                  <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="文档 URL" />
+                  <div className="empty-panel">暂无知识库，点击上方按钮创建</div>
                 )}
-                <div className="upload-options">
-                  <select value={chunkStrategy} onChange={(event) => setChunkStrategy(event.target.value)}>
-                    <option value="fixed_size">fixed_size</option>
-                    <option value="structure_aware">structure_aware</option>
-                  </select>
-                  <label className="toggle">
-                    <input checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} type="checkbox" />
-                    定时拉取
-                  </label>
-                  <button type="submit" className="gradient-button">
-                    <UploadCloud size={17} />
-                    上传
-                  </button>
-                </div>
-                <textarea value={chunkConfig} onChange={(event) => setChunkConfig(event.target.value)} rows={3} />
-              </form>
-
-              <div className="doc-table">
-                <div className="doc-row doc-head">
-                  <span>名称</span>
-                  <span>状态</span>
-                  <span>大小</span>
-                  <span>Chunk</span>
-                  <span>操作</span>
-                </div>
-                {documents.map((doc) => (
-                  <div className="doc-row" key={doc.id}>
-                    <span className="doc-title">{doc.docName}</span>
-                    <span>
-                      <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
-                    </span>
-                    <span>{formatBytes(doc.fileSize)}</span>
-                    <span>{doc.chunkCount ?? 0}</span>
-                    <span className="row-actions">
-                      <button type="button" onClick={() => void handleChunk(doc.id)}>
-                        分块
-                      </button>
-                      <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>
-                        删除
-                      </button>
-                    </span>
-                  </div>
-                ))}
-                {!documents.length && <div className="empty-panel">暂无文档，上传后可进行分块</div>}
               </div>
-            </div>
-          </section>
+            </section>
+          ) : (
+            <section className="admin-card knowledge-detail">
+              <div className="document-panel">
+                <div className="document-panel-head">
+                  <div>
+                    <span className="panel-eyebrow">当前知识库</span>
+                    <strong>{selectedKb ? `${selectedKb.name} 的文档` : "请选择知识库"}</strong>
+                    <small>{selectedKb?.collectionName ?? "选择左侧知识库后查看和上传文档"}</small>
+                  </div>
+                  <div className="section-actions">
+                    <button type="button" className="outline-button small" onClick={() => setKbDetailOpen(false)}>
+                      <ArrowLeft size={15} />
+                      返回列表
+                    </button>
+                    <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
+                      <RefreshCw size={15} />
+                      刷新
+                    </button>
+                    <button type="button" className="gradient-button small" disabled={!selectedKbId} onClick={() => setUploadOpen(true)}>
+                      <UploadCloud size={15} />
+                      上传文档
+                    </button>
+                  </div>
+                </div>
 
-          <section className="admin-card login-card">
-            <div>
-              <strong>登录与 Token</strong>
-              <span>{notice}</span>
-            </div>
-            <form onSubmit={handleLogin}>
-              <input value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="用户名" />
-              <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码" type="password" />
-              <button type="submit" className="outline-button" disabled={loading}>
-                {loading ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
-                登录
-              </button>
-            </form>
-            <div className="token-row">
-              <input value={token} onChange={(event) => setToken(event.target.value)} placeholder="s-token" />
-              <button type="button" className="outline-button" onClick={handleSaveToken}>
-                保存
-              </button>
-            </div>
-          </section>
+                <div className="doc-table-wrap">
+                  <div className="doc-table">
+                    <div className="doc-row doc-head">
+                      <span>名称</span>
+                      <span>状态</span>
+                      <span>大小</span>
+                      <span>Chunk</span>
+                      <span>操作</span>
+                    </div>
+                    {documents.map((doc) => (
+                      <div className="doc-row" key={doc.id}>
+                        <span className="doc-title">{doc.docName}</span>
+                        <span>
+                          <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
+                        </span>
+                        <span>{formatBytes(doc.fileSize)}</span>
+                        <span>{doc.chunkCount ?? 0}</span>
+                        <span className="row-actions">
+                          <button type="button" onClick={() => void handleChunk(doc.id)}>
+                            分块
+                          </button>
+                          <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>
+                            删除
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                    {!documents.length && <div className="empty-panel">暂无文档，上传后可进行分块</div>}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <p className="admin-inline-notice">{notice}</p>
         </div>
       </section>
+
+      {createKbOpen && (
+        <Modal title="创建知识库" description="创建一个新的知识库，用于存储和检索文档" onClose={() => setCreateKbOpen(false)}>
+          <form className="modal-form" onSubmit={handleCreateKb}>
+            <label>
+              <span>知识库名称</span>
+              <input value={newKbName} onChange={(event) => setNewKbName(event.target.value)} placeholder="例如：产品文档库" />
+              <small>为知识库起一个易于识别的名称</small>
+            </label>
+            <label>
+              <span>Embedding 模型</span>
+              <select value={newKbModel} onChange={(event) => setNewKbModel(event.target.value)}>
+                <option value="qwen-emb-8b">qwen-emb-8b</option>
+                <option value="qwen3-local">qwen3-local</option>
+                <option value="text-embedding">text-embedding</option>
+              </select>
+              <small>选择用于向量化文档的模型</small>
+            </label>
+            <label>
+              <span>Collection 名称</span>
+              <input
+                value={newKbCollection}
+                onChange={(event) => setNewKbCollection(event.target.value)}
+                placeholder="例如：productdocs"
+              />
+              <small>只能包含英文、数字和下划线，并以英文或下划线开头</small>
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="outline-button" onClick={() => setCreateKbOpen(false)}>
+                取消
+              </button>
+              <button type="submit" className="gradient-button" disabled={loading}>
+                {loading ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
+                创建
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {uploadOpen && (
+        <Modal
+          title="上传文档"
+          description={selectedKb ? `上传到「${selectedKb.name}」并按策略分块` : "请选择知识库后上传文档"}
+          onClose={() => setUploadOpen(false)}
+        >
+          <form className="modal-form" onSubmit={handleUpload}>
+            <div className="segmented modal-segmented">
+              <button type="button" className={sourceType === "file" ? "active" : ""} onClick={() => setSourceType("file")}>
+                文件
+              </button>
+              <button type="button" className={sourceType === "url" ? "active" : ""} onClick={() => setSourceType("url")}>
+                URL
+              </button>
+            </div>
+            <label>
+              <span>{sourceType === "file" ? "选择文件" : "文档 URL"}</span>
+              {sourceType === "file" ? (
+                <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+              ) : (
+                <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://example.com/file.pdf" />
+              )}
+              <small>{sourceType === "file" ? "直接上传本地文件，后端会写入 RustFS" : "后端会先拉取 URL 内容，再上传到 RustFS"}</small>
+            </label>
+            <label>
+              <span>分块策略</span>
+              <select value={chunkStrategy} onChange={(event) => setChunkStrategy(event.target.value)}>
+                <option value="fixed_size">fixed_size</option>
+                <option value="structure_aware">structure_aware</option>
+              </select>
+            </label>
+            <label>
+              <span>分块参数 JSON</span>
+              <textarea value={chunkConfig} onChange={(event) => setChunkConfig(event.target.value)} rows={4} />
+            </label>
+            <label className="toggle modal-toggle">
+              <input checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} type="checkbox" />
+              定时拉取 URL 文档
+            </label>
+            {scheduleEnabled && (
+              <label>
+                <span>定时表达式</span>
+                <input value={scheduleCron} onChange={(event) => setScheduleCron(event.target.value)} placeholder="0 0/30 * * * ?" />
+              </label>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="outline-button" onClick={() => setUploadOpen(false)}>
+                取消
+              </button>
+              <button type="submit" className="gradient-button" disabled={loading || !selectedKbId}>
+                {loading ? <Loader2 className="spin" size={16} /> : <UploadCloud size={16} />}
+                上传
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </main>
+  );
+}
+
+function Modal({
+  title,
+  description,
+  children,
+  onClose
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+        <button type="button" className="modal-close" onClick={onClose} aria-label="关闭">
+          <X size={22} />
+        </button>
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        {children}
+      </section>
+    </div>
   );
 }
 
