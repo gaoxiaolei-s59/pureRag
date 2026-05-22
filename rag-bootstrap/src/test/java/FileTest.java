@@ -1,5 +1,5 @@
 import org.junit.jupiter.api.Test;
-import org.puregxl.site.bootstrap.RagTestApplication;
+import org.puregxl.site.RagTestApplication;
 import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

@@ -1,20 +1,33 @@
 import {
+  BarChart3,
   Bot,
+  Brain,
   CheckCircle2,
+  ChevronDown,
+  ClipboardList,
   Database,
   FileText,
+  FolderOpen,
+  Github,
+  Home,
+  Layers3,
+  Lightbulb,
   Loader2,
   LogIn,
+  MessageSquare,
   MessageSquareText,
+  PanelLeftClose,
   Plus,
   RefreshCw,
+  Search,
   Send,
-  Settings2,
+  Settings,
   Sparkles,
   Trash2,
-  UploadCloud
+  UploadCloud,
+  UserRound
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   createKnowledgeBase,
   deleteKnowledgeDocument,
@@ -34,6 +47,8 @@ type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
 };
+
+type ViewMode = "chat" | "knowledge";
 
 const DEFAULT_CHUNK_CONFIG = JSON.stringify({ chunkSize: 512, overlapSize: 128 }, null, 2);
 
@@ -61,6 +76,7 @@ function statusText(status?: string) {
 }
 
 export function App() {
+  const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [token, setToken] = useState(getStoredToken());
   const [userName, setUserName] = useState("admin");
   const [password, setPassword] = useState("123456");
@@ -70,6 +86,7 @@ export function App() {
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [selectedKbId, setSelectedKbId] = useState("");
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [kbSearch, setKbSearch] = useState("");
 
   const [newKbName, setNewKbName] = useState("");
   const [newKbCollection, setNewKbCollection] = useState("");
@@ -97,7 +114,23 @@ export function App() {
     [bases, selectedKbId]
   );
 
+  const filteredBases = useMemo(() => {
+    const keyword = kbSearch.trim().toLowerCase();
+    if (!keyword) {
+      return bases;
+    }
+    return bases.filter((item) =>
+      `${item.name} ${item.collectionName} ${item.embeddingModel}`.toLowerCase().includes(keyword)
+    );
+  }, [bases, kbSearch]);
+
+  const successDocs = documents.filter((item) => item.status === "success").length;
+
   async function refreshBases() {
+    if (!getStoredToken()) {
+      setNotice("请先登录或填写 s-token");
+      return;
+    }
     setLoading(true);
     try {
       const page = await fetchKnowledgeBases();
@@ -131,8 +164,12 @@ export function App() {
   }
 
   useEffect(() => {
-    void refreshBases();
-  }, []);
+    if (token) {
+      void refreshBases();
+      return;
+    }
+    setNotice("请先登录或填写 s-token");
+  }, [token]);
 
   useEffect(() => {
     void refreshDocuments(selectedKbId);
@@ -157,6 +194,11 @@ export function App() {
   function handleSaveToken() {
     setStoredToken(token);
     setNotice(token ? "s-token 已保存" : "s-token 已清空");
+    if (!token) {
+      setBases([]);
+      setSelectedKbId("");
+      setDocuments([]);
+    }
   }
 
   async function handleCreateKb(event: FormEvent) {
@@ -300,253 +342,417 @@ export function App() {
     setNotice("已停止当前聊天请求");
   }
 
-  return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">
-            <Sparkles size={22} />
+  if (viewMode === "chat") {
+    return (
+      <main className="chat-shell">
+        <aside className="chat-sidebar">
+          <div className="chat-brand">
+            <div className="chat-brand-mark">
+              <Bot size={24} />
+            </div>
+            <div>
+              <strong>Ragent AI 智能体</strong>
+              <span>Powered by AI</span>
+            </div>
           </div>
+
+          <section className="quick-card">
+            <div className="quick-card-head">
+              <span>快速开始</span>
+              <b>新内容</b>
+            </div>
+            <button type="button" className="new-chat-card" onClick={() => setMessages([])}>
+              <span className="plus-cube">
+                <Plus size={22} />
+              </span>
+              <span>
+                <strong>新建对话</strong>
+                <small>从空白开始</small>
+              </span>
+            </button>
+            <button type="button" className="mini-pill" onClick={() => setViewMode("knowledge")}>
+              <Settings size={16} />
+              管理后台
+            </button>
+          </section>
+
+          <section className="search-card">
+            <div className="search-card-head">
+              <span>搜索对话</span>
+              <small>Ctrl / Cmd + K</small>
+            </div>
+            <label className="soft-search">
+              <Search size={18} />
+              <input placeholder="搜索对话..." />
+            </label>
+          </section>
+
+          <div className="empty-chat-history">
+            <MessageSquare size={54} />
+            <span>暂无对话记录</span>
+          </div>
+
+          <div className="chat-user">
+            <span className="user-avatar">A</span>
+            <strong>{userName}</strong>
+            <span>•••</span>
+          </div>
+        </aside>
+
+        <section className="chat-main">
+          <header className="chat-topbar">
+            <strong>新对话</strong>
+            <button className="star-button" type="button">
+              <Github size={18} />
+              Star
+              <span>--</span>
+            </button>
+          </header>
+
+          <div className="hero-area">
+            <div className="hero-badge">
+              <Bot size={16} />
+              RAG 智能问答
+            </div>
+            <h1>
+              把问题变成<span>清晰答案</span>
+            </h1>
+            <p>结构化提问、知识检索与深度思考，一次对话给出可执行方案</p>
+
+            <form className="hero-prompt" onSubmit={handleChat}>
+              <textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="输入你的问题..."
+                rows={3}
+              />
+              <div className="hero-prompt-actions">
+                <label className="thinking-pill">
+                  <input
+                    type="checkbox"
+                    checked={deepThinking}
+                    onChange={(event) => setDeepThinking(event.target.checked)}
+                  />
+                  <Brain size={16} />
+                  深度思考
+                </label>
+                <button type="submit" aria-label="发送" disabled={chatLoading}>
+                  {chatLoading ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
+                </button>
+              </div>
+            </form>
+
+            <div className="shortcut-hint">
+              <kbd>Enter</kbd> 发送 · <kbd>Shift + Enter</kbd> 换行
+            </div>
+
+            <div className="prompt-examples">
+              <span>试试这些开场</span>
+            </div>
+
+            <div className="example-grid">
+              <button type="button" className="example-card" onClick={() => setQuestion("请帮我总结以下内容，并列出行动点")}>
+                <span className="example-icon">
+                  <BookIcon size={20} />
+                </span>
+                <strong>内容总结</strong>
+                <small>提炼 3-5 条关键信息与行动点</small>
+              </button>
+              <button type="button" className="example-card" onClick={() => setQuestion("请把下面目标拆成可执行步骤与优先级")}>
+                <span className="example-icon">
+                  <CheckCircle2 size={20} />
+                </span>
+                <strong>任务拆解</strong>
+                <small>把目标拆成可执行步骤与优先级</small>
+              </button>
+              <button type="button" className="example-card" onClick={() => setQuestion("请围绕这个主题给出多个方案并比较优缺点")}>
+                <span className="example-icon">
+                  <Lightbulb size={20} />
+                </span>
+                <strong>灵感扩展</strong>
+                <small>给出多个方案并比较优缺点</small>
+              </button>
+            </div>
+
+            {messages.length > 0 && (
+              <section className="floating-chat-result">
+                {messages.slice(-4).map((message, index) => (
+                  <div className={`message ${message.role}`} key={`${message.role}-${index}`}>
+                    <div className="avatar">{message.role === "assistant" ? <Bot size={16} /> : message.role === "user" ? "我" : "i"}</div>
+                    <p>{message.content || (chatLoading ? "生成中..." : "")}</p>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <button type="button" className="ghost-button small" onClick={stopChat}>
+                    停止生成
+                  </button>
+                )}
+              </section>
+            )}
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="admin-shell">
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <div className="admin-brand-mark">R</div>
           <div>
-            <strong>RagTest</strong>
+            <strong>Ragent AI 管理后台</strong>
             <span>Knowledge Console</span>
           </div>
         </div>
 
-        <form className="panel compact-form" onSubmit={handleLogin}>
-          <div className="panel-title">
-            <LogIn size={16} />
-            <span>登录</span>
-          </div>
-          <input value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="用户名" />
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="密码"
-            type="password"
-          />
-          <button type="submit" className="primary-button" disabled={loading}>
-            {loading ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
-            登录并保存
+        <nav className="admin-nav">
+          <span className="nav-section">导航</span>
+          <button type="button" className="nav-item" onClick={() => setViewMode("chat")}>
+            <Home size={19} />
+            新对话
           </button>
-        </form>
-
-        <section className="panel compact-form">
-          <div className="panel-title">
-            <Settings2 size={16} />
-            <span>s-token</span>
-          </div>
-          <textarea
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            rows={3}
-            placeholder="也可以手动粘贴 s-token"
-          />
-          <button type="button" className="ghost-button" onClick={handleSaveToken}>
-            <CheckCircle2 size={16} />
-            保存 Token
+          <button type="button" className="nav-item">
+            <BarChart3 size={19} />
+            Dashboard
           </button>
-        </section>
+          <button type="button" className="nav-item active">
+            <Database size={19} />
+            知识库管理
+          </button>
+          <button type="button" className="nav-item">
+            <Layers3 size={19} />
+            意图管理
+            <ChevronDown size={16} />
+          </button>
+          <button type="button" className="nav-item sub">
+            <ClipboardList size={18} />
+            意图列表
+          </button>
+          <button type="button" className="nav-item">
+            <UploadCloud size={19} />
+            数据通道
+            <ChevronDown size={16} />
+          </button>
+          <span className="nav-section">设置</span>
+          <button type="button" className="nav-item">
+            <UserRound size={19} />
+            用户管理
+          </button>
+          <button type="button" className="nav-item">
+            <Settings size={19} />
+            系统设置
+          </button>
+        </nav>
 
-        <section className="panel">
-          <div className="panel-title space-between">
-            <span className="inline-title">
-              <Database size={16} />
-              知识库
-            </span>
-            <button type="button" className="icon-button" onClick={() => void refreshBases()} aria-label="刷新知识库">
-              <RefreshCw size={16} />
-            </button>
-          </div>
-          <div className="kb-list">
-            {bases.map((kb) => (
-              <button
-                type="button"
-                key={kb.id}
-                className={`kb-item ${kb.id === selectedKbId ? "active" : ""}`}
-                onClick={() => setSelectedKbId(kb.id)}
-              >
-                <strong>{kb.name}</strong>
-                <span>{kb.collectionName}</span>
-              </button>
-            ))}
-            {!bases.length && <p className="empty-text">暂无知识库</p>}
-          </div>
-        </section>
+        <button type="button" className="collapse-button">
+          <PanelLeftClose size={16} />
+          收起侧边栏
+        </button>
       </aside>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>知识库工作台</h1>
-            <p>{selectedKb ? `${selectedKb.name} / ${selectedKb.collectionName}` : "选择或创建一个知识库开始"}</p>
+      <section className="admin-main">
+        <header className="admin-topbar">
+          <label className="admin-search">
+            <Search size={19} />
+            <input value={kbSearch} onChange={(event) => setKbSearch(event.target.value)} placeholder="筛选知识库..." />
+            <kbd>Ctrl K</kbd>
+          </label>
+          <div className="admin-top-actions">
+            <button type="button" className="outline-button" onClick={() => setViewMode("chat")}>
+              <MessageSquare size={18} />
+              返回聊天
+            </button>
+            <button type="button" className="outline-button">
+              <Github size={18} />
+              Star
+              <span>--</span>
+            </button>
+            <div className="admin-user">
+              <span>A</span>
+              {userName}
+              <ChevronDown size={16} />
+            </div>
           </div>
-          <div className="notice">{notice}</div>
         </header>
 
-        <div className="grid">
-          <section className="panel create-panel">
-            <div className="panel-title">
-              <Plus size={16} />
-              <span>新建知识库</span>
+        <div className="admin-content">
+          <div className="breadcrumb">首页 / 知识库管理</div>
+          <div className="page-heading">
+            <div>
+              <h1>知识库管理</h1>
+              <p>管理所有知识库及其文档</p>
             </div>
-            <form className="inline-form" onSubmit={handleCreateKb}>
-              <input value={newKbName} onChange={(event) => setNewKbName(event.target.value)} placeholder="名称" />
+            <div className="page-actions">
+              <button type="button" className="outline-button" onClick={() => void refreshBases()}>
+                <RefreshCw size={18} />
+                刷新
+              </button>
+            </div>
+          </div>
+
+          <section className="stats-grid">
+            <StatCard icon={<Database size={24} />} label="知识库" value={bases.length} />
+            <StatCard icon={<FileText size={24} />} label="文档数" value={documents.length} />
+            <StatCard icon={<FolderOpen size={24} />} label="含文档知识库" value={bases.filter((item) => (item.documentCount ?? 0) > 0).length} />
+            <StatCard icon={<Layers3 size={24} />} label="完成文档" value={successDocs} />
+          </section>
+
+          <section className="admin-card create-strip">
+            <form className="knowledge-create-form" onSubmit={handleCreateKb}>
+              <input value={newKbName} onChange={(event) => setNewKbName(event.target.value)} placeholder="知识库名称" />
               <input
                 value={newKbCollection}
                 onChange={(event) => setNewKbCollection(event.target.value)}
                 placeholder="Milvus Collection"
               />
               <input value={newKbModel} onChange={(event) => setNewKbModel(event.target.value)} placeholder="嵌入模型" />
-              <button type="submit" className="primary-button">
-                <Plus size={16} />
-                创建
+              <button type="submit" className="gradient-button">
+                <Plus size={18} />
+                新建知识库
               </button>
             </form>
           </section>
 
-          <section className="panel upload-panel">
-            <div className="panel-title">
-              <UploadCloud size={16} />
-              <span>上传文档</span>
-            </div>
-            <form className="upload-form" onSubmit={handleUpload}>
-              <div className="segmented">
-                <button
-                  type="button"
-                  className={sourceType === "file" ? "active" : ""}
-                  onClick={() => setSourceType("file")}
-                >
-                  文件
-                </button>
-                <button
-                  type="button"
-                  className={sourceType === "url" ? "active" : ""}
-                  onClick={() => setSourceType("url")}
-                >
-                  URL
-                </button>
+          <section className="admin-card knowledge-layout">
+            <div className="knowledge-list">
+              <div className="section-head">
+                <strong>知识库列表</strong>
+                <span>{filteredBases.length} 个</span>
               </div>
-              {sourceType === "file" ? (
-                <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-              ) : (
-                <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="文档 URL" />
-              )}
-              <div className="two-columns">
-                <select value={chunkStrategy} onChange={(event) => setChunkStrategy(event.target.value)}>
-                  <option value="fixed_size">fixed_size</option>
-                  <option value="structure_aware">structure_aware</option>
-                </select>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={scheduleEnabled}
-                    onChange={(event) => setScheduleEnabled(event.target.checked)}
-                  />
-                  定时拉取
-                </label>
-              </div>
-              {scheduleEnabled && (
-                <input value={scheduleCron} onChange={(event) => setScheduleCron(event.target.value)} placeholder="cron" />
-              )}
-              <textarea value={chunkConfig} onChange={(event) => setChunkConfig(event.target.value)} rows={4} />
-              <button type="submit" className="primary-button">
-                <UploadCloud size={16} />
-                上传
-              </button>
-            </form>
-          </section>
-
-          <section className="panel docs-panel">
-            <div className="panel-title space-between">
-              <span className="inline-title">
-                <FileText size={16} />
-                文档
-              </span>
-              <button type="button" className="ghost-button small" onClick={() => void refreshDocuments()}>
-                <RefreshCw size={15} />
-                刷新
-              </button>
-            </div>
-            <div className="table">
-              <div className="table-row table-head">
-                <span>名称</span>
-                <span>状态</span>
-                <span>大小</span>
-                <span>Chunk</span>
-                <span>操作</span>
-              </div>
-              {documents.map((doc) => (
-                <div className="table-row" key={doc.id}>
-                  <span className="doc-name">{doc.docName}</span>
-                  <span>
-                    <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
-                  </span>
-                  <span>{formatBytes(doc.fileSize)}</span>
-                  <span>{doc.chunkCount ?? 0}</span>
-                  <span className="actions">
-                    <button type="button" className="icon-button" onClick={() => void handleChunk(doc.id)} aria-label="分块">
-                      <RefreshCw size={15} />
-                    </button>
-                    <button type="button" className="icon-button danger" onClick={() => void handleDeleteDoc(doc.id)} aria-label="删除">
-                      <Trash2 size={15} />
-                    </button>
-                  </span>
-                </div>
-              ))}
-              {!documents.length && <p className="empty-text">这个知识库还没有文档</p>}
-            </div>
-          </section>
-
-          <section className="panel chat-panel">
-            <div className="panel-title">
-              <MessageSquareText size={16} />
-              <span>RAG 问答</span>
-            </div>
-            <div className="chat-body">
-              {messages.map((message, index) => (
-                <div className={`message ${message.role}`} key={`${message.role}-${index}`}>
-                  <div className="avatar">{message.role === "assistant" ? <Bot size={16} /> : message.role === "user" ? "我" : "i"}</div>
-                  <p>{message.content || (chatLoading && index === messages.length - 1 ? "生成中..." : "")}</p>
-                </div>
-              ))}
-            </div>
-            <form className="chat-form" onSubmit={handleChat}>
-              <div className="chat-options">
-                <input
-                  value={conversationId}
-                  onChange={(event) => setConversationId(event.target.value)}
-                  placeholder="conversationId"
-                />
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={deepThinking}
-                    onChange={(event) => setDeepThinking(event.target.checked)}
-                  />
-                  深度思考
-                </label>
-              </div>
-              <div className="prompt-row">
-                <textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  rows={3}
-                  placeholder="输入问题，例如：商品的上下架规则"
-                />
-                <button type="submit" className="primary-button send-button" disabled={chatLoading}>
-                  {chatLoading ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
-                </button>
-                {chatLoading && (
-                  <button type="button" className="ghost-button stop-button" onClick={stopChat}>
-                    停止
+              {filteredBases.length > 0 ? (
+                filteredBases.map((kb) => (
+                  <button
+                    type="button"
+                    className={`knowledge-row ${kb.id === selectedKbId ? "active" : ""}`}
+                    key={kb.id}
+                    onClick={() => setSelectedKbId(kb.id)}
+                  >
+                    <span className="row-icon">
+                      <Database size={18} />
+                    </span>
+                    <span>
+                      <strong>{kb.name}</strong>
+                      <small>{kb.collectionName}</small>
+                    </span>
+                    <b>{kb.documentCount ?? 0}</b>
                   </button>
-                )}
+                ))
+              ) : (
+                <div className="empty-panel">暂无知识库，点击上方按钮创建</div>
+              )}
+            </div>
+
+            <div className="document-area">
+              <div className="section-head">
+                <strong>{selectedKb ? `${selectedKb.name} 的文档` : "文档"}</strong>
+                <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
+                  <RefreshCw size={15} />
+                  刷新
+                </button>
               </div>
+
+              <form className="upload-dock" onSubmit={handleUpload}>
+                <div className="segmented">
+                  <button type="button" className={sourceType === "file" ? "active" : ""} onClick={() => setSourceType("file")}>
+                    文件
+                  </button>
+                  <button type="button" className={sourceType === "url" ? "active" : ""} onClick={() => setSourceType("url")}>
+                    URL
+                  </button>
+                </div>
+                {sourceType === "file" ? (
+                  <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+                ) : (
+                  <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="文档 URL" />
+                )}
+                <div className="upload-options">
+                  <select value={chunkStrategy} onChange={(event) => setChunkStrategy(event.target.value)}>
+                    <option value="fixed_size">fixed_size</option>
+                    <option value="structure_aware">structure_aware</option>
+                  </select>
+                  <label className="toggle">
+                    <input checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} type="checkbox" />
+                    定时拉取
+                  </label>
+                  <button type="submit" className="gradient-button">
+                    <UploadCloud size={17} />
+                    上传
+                  </button>
+                </div>
+                <textarea value={chunkConfig} onChange={(event) => setChunkConfig(event.target.value)} rows={3} />
+              </form>
+
+              <div className="doc-table">
+                <div className="doc-row doc-head">
+                  <span>名称</span>
+                  <span>状态</span>
+                  <span>大小</span>
+                  <span>Chunk</span>
+                  <span>操作</span>
+                </div>
+                {documents.map((doc) => (
+                  <div className="doc-row" key={doc.id}>
+                    <span className="doc-title">{doc.docName}</span>
+                    <span>
+                      <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
+                    </span>
+                    <span>{formatBytes(doc.fileSize)}</span>
+                    <span>{doc.chunkCount ?? 0}</span>
+                    <span className="row-actions">
+                      <button type="button" onClick={() => void handleChunk(doc.id)}>
+                        分块
+                      </button>
+                      <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>
+                        删除
+                      </button>
+                    </span>
+                  </div>
+                ))}
+                {!documents.length && <div className="empty-panel">暂无文档，上传后可进行分块</div>}
+              </div>
+            </div>
+          </section>
+
+          <section className="admin-card login-card">
+            <div>
+              <strong>登录与 Token</strong>
+              <span>{notice}</span>
+            </div>
+            <form onSubmit={handleLogin}>
+              <input value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="用户名" />
+              <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码" type="password" />
+              <button type="submit" className="outline-button" disabled={loading}>
+                {loading ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
+                登录
+              </button>
             </form>
+            <div className="token-row">
+              <input value={token} onChange={(event) => setToken(event.target.value)} placeholder="s-token" />
+              <button type="button" className="outline-button" onClick={handleSaveToken}>
+                保存
+              </button>
+            </div>
           </section>
         </div>
       </section>
     </main>
   );
+}
+
+function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+  return (
+    <div className="stat-card">
+      <span>{icon}</span>
+      <div>
+        <small>{label}</small>
+        <strong>{value}</strong>
+      </div>
+      <em>全部</em>
+    </div>
+  );
+}
+
+function BookIcon({ size = 20 }: { size?: number }) {
+  return <FileText size={size} />;
 }

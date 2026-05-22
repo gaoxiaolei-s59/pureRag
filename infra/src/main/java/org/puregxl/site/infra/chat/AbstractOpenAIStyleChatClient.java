@@ -38,6 +38,7 @@ import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.infra.http.*;
 import org.puregxl.site.infra.model.ModelTarget;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.util.List;
@@ -47,9 +48,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
 
-    protected final OkHttpClient syncHttpClient;
-    protected final OkHttpClient streamingHttpClient;
-    protected final Executor modelStreamExecutor;
+
+    @Autowired
+    private OkHttpClient syncHttpClient;
+    @Autowired
+    private OkHttpClient streamingHttpClient;
+    @Autowired
+    private Executor modelStreamExecutor;
+
     protected final Gson gson = new Gson();
 
     protected AbstractOpenAIStyleChatClient(OkHttpClient syncHttpClient,
