@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@MapperScan({"org.puregxl.site.knowledge.dao.mapper", "org.puregxl.site.user.dao.mapper"})
+@MapperScan({"org.puregxl.site.knowledge.dao.mapper", "org.puregxl.site.user.dao.mapper", "org.puregxl.site.rag.dao.mapper"})
 @EnableScheduling
 @SpringBootApplication
 public class RagTestApplication {

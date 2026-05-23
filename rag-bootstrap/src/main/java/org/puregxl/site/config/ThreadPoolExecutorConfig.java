@@ -33,4 +33,20 @@ public class ThreadPoolExecutorConfig {
                 new ThreadPoolExecutor.AbortPolicy()
         );
     }
+
+    @Bean
+    public Executor memoryLoadExecutor() {
+        return new ThreadPoolExecutor(
+                Math.max(2, CPU_COUNT / 2),
+                Math.max(4, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("model_stream_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+    }
+
 }

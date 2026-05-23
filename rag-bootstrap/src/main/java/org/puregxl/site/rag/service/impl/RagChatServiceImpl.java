@@ -12,6 +12,8 @@ import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.framework.web.SseEmitterSender;
 import org.puregxl.site.infra.chat.StreamCallback;
 import org.puregxl.site.infra.chat.StreamCancellationHandle;
+import org.puregxl.site.infra.framework.convention.ChatMessage;
+import org.puregxl.site.rag.service.MemoryService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -24,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class RagChatServiceImpl implements RagChatService {
 
     private final ChatPipeLine chatPipeLine;
+    private final MemoryService memoryService;
     private final Map<String, StreamCancellationHandle> runningTasks = new ConcurrentHashMap<>();
 
     /**
@@ -40,6 +43,7 @@ public class RagChatServiceImpl implements RagChatService {
         }
 
         String taskId = IdUtil.fastSimpleUUID();
+        String currentUserId = currentUserId();
         SseEmitterSender sender = new SseEmitterSender(emitter);
         AtomicBoolean finished = new AtomicBoolean(false);
         sender.sendEvent("task", taskId);
@@ -49,8 +53,8 @@ public class RagChatServiceImpl implements RagChatService {
                 .conversationId(conversationId)
                 .taskId(taskId)
                 .deepThinking(Boolean.TRUE.equals(deepThinking))
-                .userId(currentUserId())
-                .callback(buildSseCallback(taskId, sender, finished))
+                .userId(currentUserId)
+                .callback(buildSseCallback(taskId, conversationId, currentUserId, userQuestion.trim(), sender, finished))
                 .build();
 
         try {
@@ -81,15 +85,35 @@ public class RagChatServiceImpl implements RagChatService {
         }
     }
 
-    private StreamCallback buildSseCallback(String taskId, SseEmitterSender sender, AtomicBoolean finished) {
+    /**
+     * 构建 SSE 流式回调。
+     * <p>
+     * 这里同时承担“完整回答拼接”的职责：onContent/onThinking 只向前端推送增量，
+     * onComplete 时再把本轮用户问题和助手完整回复写入对话记忆表。
+     */
+    private StreamCallback buildSseCallback(String taskId,
+                                            String conversationId,
+                                            String userId,
+                                            String userQuestion,
+                                            SseEmitterSender sender,
+                                            AtomicBoolean finished) {
+        StringBuilder answerBuilder = new StringBuilder();
+        StringBuilder thinkingBuilder = new StringBuilder();
+        long startTimeMillis = System.currentTimeMillis();
         return new StreamCallback() {
             @Override
             public void onContent(String content) {
+                if (content != null) {
+                    answerBuilder.append(content);
+                }
                 sender.sendEvent("message", content);
             }
 
             @Override
             public void onThinking(String content) {
+                if (content != null) {
+                    thinkingBuilder.append(content);
+                }
                 sender.sendEvent("thinking", content);
             }
 
@@ -97,6 +121,7 @@ public class RagChatServiceImpl implements RagChatService {
             public void onComplete() {
                 finished.set(true);
                 runningTasks.remove(taskId);
+                saveMemoryAfterComplete(conversationId, userId, userQuestion, answerBuilder, thinkingBuilder, startTimeMillis);
                 sender.sendEvent("done", taskId);
                 sender.complete();
             }
@@ -109,6 +134,27 @@ public class RagChatServiceImpl implements RagChatService {
                 sender.fail(error);
             }
         };
+    }
+
+    private void saveMemoryAfterComplete(String conversationId,
+                                         String userId,
+                                         String userQuestion,
+                                         StringBuilder answerBuilder,
+                                         StringBuilder thinkingBuilder,
+                                         long startTimeMillis) {
+        String answer = answerBuilder.toString();
+        if (StrUtil.isBlank(answer)) {
+            return;
+        }
+        String thinkingContent = thinkingBuilder.isEmpty() ? null : thinkingBuilder.toString();
+        Integer thinkingDuration = thinkingBuilder.isEmpty()
+                ? null
+                : Math.toIntExact(Math.max(1L, (System.currentTimeMillis() - startTimeMillis) / 1000L));
+        memoryService.saveConversationTurn(
+                userId,
+                conversationId,
+                ChatMessage.user(userQuestion),
+                ChatMessage.assistant(answer, thinkingContent, thinkingDuration));
     }
 
     private String currentUserId() {

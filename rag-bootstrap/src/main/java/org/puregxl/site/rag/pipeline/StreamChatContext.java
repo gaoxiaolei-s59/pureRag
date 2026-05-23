@@ -2,7 +2,11 @@ package org.puregxl.site.rag.pipeline;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.Setter;
 import org.puregxl.site.infra.chat.StreamCallback;
+import org.puregxl.site.infra.framework.convention.ChatMessage;
+
+import java.util.List;
 
 @Data
 @Builder
@@ -13,4 +17,8 @@ public class StreamChatContext {
     private final boolean deepThinking;
     private final String userId;
     private final StreamCallback callback;
+
+
+    @Setter
+    private List<ChatMessage> history;
 }

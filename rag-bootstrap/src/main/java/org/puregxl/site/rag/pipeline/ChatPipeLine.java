@@ -14,6 +14,7 @@ import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.infra.rerank.RerankService;
+import org.puregxl.site.rag.service.MemoryService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -32,6 +33,7 @@ public class ChatPipeLine {
     private final RerankService rerankService;
     private final LLMService llmService;
     private final RAGDefaultProperties ragDefaultProperties;
+    private final MemoryService memoryService;
 
     /**
      * 执行一次基础 RAG 流式问答。
@@ -40,12 +42,16 @@ public class ChatPipeLine {
      * 压缩成少量高相关上下文，最后把上下文和用户问题组装为 ChatRequest 交给大模型流式输出。
      */
     public StreamCancellationHandle execute(StreamChatContext context) {
+
         if (context == null || StrUtil.isBlank(context.getQuestion())) {
             throw new ClientException("用户问题不能为空");
         }
         if (context.getCallback() == null) {
             throw new ClientException("流式回调不能为空");
         }
+
+        //1.加载对话记忆，后续与知识库召回内容一起组装到模型请求中。
+        List<ChatMessage> memoryMessages = loadMemory(context);
 
         String question = context.getQuestion().trim();
         List<Float> queryEmbedding = embeddingService.embed(question);
@@ -54,11 +60,21 @@ public class ChatPipeLine {
                 queryEmbedding,
                 safePositive(ragDefaultProperties.getRetrieveTopK(), 8));
 //        List<RetrievedChunk> contextChunks = rerank(question, candidates);
-        ChatRequest request = buildChatRequest(question, candidates, context.isDeepThinking());
+        ChatRequest request = buildChatRequest(question, candidates, memoryMessages, context.isDeepThinking());
 
         log.info("[RAG问答] 开始流式生成，taskId={}, conversationId={}, retrieveCount={}, contextCount={}",
                 context.getTaskId(), context.getConversationId(), candidates.size(), candidates.size());
         return llmService.streamChat(request, context.getCallback());
+    }
+
+    private List<ChatMessage> loadMemory(StreamChatContext context) {
+        List<ChatMessage> chatMessages = memoryService.loadMemory(
+                context.getUserId(),
+                context.getConversationId(),
+                ChatMessage.user(context.getQuestion())
+        );
+        context.setHistory(chatMessages);
+        return chatMessages;
     }
 
 //    private List<RetrievedChunk> rerank(String question, List<RetrievedChunk> candidates) {
@@ -69,11 +85,15 @@ public class ChatPipeLine {
 //        return rerankService.rerank(question, candidates, topN);
 //    }
 
-    private ChatRequest buildChatRequest(String question, List<RetrievedChunk> contextChunks, boolean deepThinking) {
+    private ChatRequest buildChatRequest(String question, List<RetrievedChunk> contextChunks, List<ChatMessage> memoryMessages, boolean deepThinking) {
+        List<ChatMessage> messages = new java.util.ArrayList<>();
+        messages.add(ChatMessage.system(buildSystemPrompt(contextChunks)));
+        if (CollUtil.isNotEmpty(memoryMessages)) {
+            messages.addAll(memoryMessages);
+        }
+        messages.add(ChatMessage.user(question));
         return ChatRequest.builder()
-                .messages(List.of(
-                        ChatMessage.system(buildSystemPrompt(contextChunks)),
-                        ChatMessage.user(question)))
+                .messages(messages)
                 .thinking(deepThinking)
                 .temperature(DEFAULT_TEMPERATURE)
                 .topP(DEFAULT_TOP_P)
