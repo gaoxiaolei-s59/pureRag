@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.rag.core.memory.ConversationMemoryService;
+import org.puregxl.site.rag.core.memory.ConversationStore;
 import org.puregxl.site.rag.core.memory.ConversationSummerService;
 import org.puregxl.site.rag.service.MemoryService;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,8 @@ public class MemoryServiceImpl implements MemoryService {
 
     private final Executor memoryLoadExecutor;
 
+    private final ConversationStore conversationStore;
+
     /**
      * 加载一次对话所需的记忆上下文。
      * <p>
@@ -40,10 +43,11 @@ public class MemoryServiceImpl implements MemoryService {
     @Override
     public List<ChatMessage> loadMemory(String userId, String conversationId, ChatMessage user) {
         compressWithFallback(conversationId, userId);
-
-
+        createConversationIfAbsent(conversationId, userId, user);
         Long startTime = System.currentTimeMillis();
         try {
+
+
             CompletableFuture<ChatMessage> summaryFuture = CompletableFuture.supplyAsync(
                     () -> loadSummaryWithFallback(conversationId, userId), memoryLoadExecutor
             );
@@ -116,6 +120,25 @@ public class MemoryServiceImpl implements MemoryService {
         }
     }
 
+
+    /**
+     * 如果是第一次发起对话，持久化会话
+     * @param conversationId
+     * @param userId
+     */
+    private void createConversationIfAbsent(String conversationId, String userId, ChatMessage user) {
+        try {
+            conversationStore.saveConversation(conversationId, userId, user.getContent());
+        } catch (Exception e) {
+            log.error("持久化对话失败, conversationId:{}, userId:{}", conversationId, userId, e);
+        }
+    }
+
+    /**
+     * 检查是否需要压缩上下文
+     * @param conversationId
+     * @param userId
+     */
     private void compressWithFallback(String conversationId, String userId) {
         try {
             conversationMemoryService.compressIfNeeded(conversationId, userId);

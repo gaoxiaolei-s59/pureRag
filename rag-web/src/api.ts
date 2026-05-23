@@ -259,6 +259,9 @@ export async function streamChat(
         handlers.onDone();
         continue;
       }
+      if (eventName && eventName !== "message") {
+        continue;
+      }
       if (text) {
         handlers.onToken(text);
       }

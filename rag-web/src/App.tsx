@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardList,
+  Copy,
   Database,
   FileText,
   FolderOpen,
@@ -18,18 +19,22 @@ import {
   MessageSquare,
   MessageSquareText,
   PanelLeftClose,
+  Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Send,
   Settings,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   UploadCloud,
   UserRound,
   X
 } from "lucide-react";
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   createKnowledgeBase,
   deleteKnowledgeDocument,
@@ -110,9 +115,7 @@ export function App() {
   const [question, setQuestion] = useState("");
   const [deepThinking, setDeepThinking] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "system", content: "选择知识库并完成分块后，可以在这里发起 RAG 问答。" }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const selectedKb = useMemo(
@@ -348,6 +351,14 @@ export function App() {
     }
   }
 
+  function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
   function stopChat() {
     abortRef.current?.abort();
     setChatLoading(false);
@@ -483,24 +494,85 @@ export function App() {
             </button>
           </header>
 
-          <div className="hero-area">
-            <div className="hero-badge">
-              <Bot size={16} />
-              PureAgent 智能问答
-            </div>
-            <h1>
-              把知识变成<span>清晰答案</span>
-            </h1>
-            <p>结构化提问、知识检索与深度思考，一次对话给出可执行方案</p>
+          <div className="chat-workspace">
+            <section className={`conversation-stream ${messages.length === 0 ? "empty" : ""}`}>
+              {messages.length === 0 ? (
+                <div className="chat-empty-state">
+                  <div className="chat-empty-mark">
+                    <Bot size={26} />
+                  </div>
+                  <h1>今天想研究什么？</h1>
+                  <p>选择知识库并完成分块后，可以直接在这里发起 RAG 问答。</p>
+                  <div className="starter-row">
+                    <button type="button" onClick={() => setQuestion("请总结当前知识库里的核心业务规则")}>
+                      <FileText size={16} />
+                      总结业务规则
+                    </button>
+                    <button type="button" onClick={() => setQuestion("请把商品上下架规则整理成流程")}>
+                      <CheckCircle2 size={16} />
+                      整理流程
+                    </button>
+                    <button type="button" onClick={() => setQuestion("请基于知识库生成一组测试问题")}>
+                      <Lightbulb size={16} />
+                      生成问题
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                messages.map((message, index) => (
+                  <article className={`chat-turn ${message.role}`} key={`${message.role}-${index}`}>
+                    {message.role === "user" ? (
+                      <>
+                        <div className="user-bubble">{message.content}</div>
+                        <div className="turn-actions user-actions">
+                          <button type="button" aria-label="复制">
+                            <Copy size={17} />
+                          </button>
+                          <button type="button" aria-label="编辑">
+                            <Pencil size={17} />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="assistant-text">
+                          {message.content || (chatLoading && index === messages.length - 1 ? "正在思考..." : "")}
+                        </div>
+                        <div className="turn-actions">
+                          <button type="button" aria-label="复制">
+                            <Copy size={17} />
+                          </button>
+                          <button type="button" aria-label="重新生成">
+                            <RotateCcw size={17} />
+                          </button>
+                          <button type="button" aria-label="赞同">
+                            <ThumbsUp size={17} />
+                          </button>
+                          <button type="button" aria-label="不赞同">
+                            <ThumbsDown size={17} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                ))
+              )}
+              {chatLoading && (
+                <button type="button" className="ghost-button stop-floating" onClick={stopChat}>
+                  停止生成
+                </button>
+              )}
+            </section>
 
-            <form className="hero-prompt" onSubmit={handleChat}>
+            <form className="chat-composer" onSubmit={handleChat}>
               <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={handlePromptKeyDown}
                 placeholder="输入你的问题..."
                 rows={3}
               />
-              <div className="hero-prompt-actions">
+              <div className="composer-actions">
                 <label className="thinking-pill">
                   <input
                     type="checkbox"
@@ -515,54 +587,9 @@ export function App() {
                 </button>
               </div>
             </form>
-
-            <div className="shortcut-hint">
+            <div className="composer-hint">
               <kbd>Enter</kbd> 发送 · <kbd>Shift + Enter</kbd> 换行
             </div>
-
-            <div className="prompt-examples">
-              <span>试试这些开场</span>
-            </div>
-
-            <div className="example-grid">
-              <button type="button" className="example-card" onClick={() => setQuestion("请帮我总结以下内容，并列出行动点")}>
-                <span className="example-icon">
-                  <BookIcon size={20} />
-                </span>
-                <strong>内容总结</strong>
-                <small>提炼 3-5 条关键信息与行动点</small>
-              </button>
-              <button type="button" className="example-card" onClick={() => setQuestion("请把下面目标拆成可执行步骤与优先级")}>
-                <span className="example-icon">
-                  <CheckCircle2 size={20} />
-                </span>
-                <strong>任务拆解</strong>
-                <small>把目标拆成可执行步骤与优先级</small>
-              </button>
-              <button type="button" className="example-card" onClick={() => setQuestion("请围绕这个主题给出多个方案并比较优缺点")}>
-                <span className="example-icon">
-                  <Lightbulb size={20} />
-                </span>
-                <strong>灵感扩展</strong>
-                <small>给出多个方案并比较优缺点</small>
-              </button>
-            </div>
-
-            {messages.length > 0 && (
-              <section className="floating-chat-result">
-                {messages.slice(-4).map((message, index) => (
-                  <div className={`message ${message.role}`} key={`${message.role}-${index}`}>
-                    <div className="avatar">{message.role === "assistant" ? <Bot size={16} /> : message.role === "user" ? "我" : "i"}</div>
-                    <p>{message.content || (chatLoading ? "生成中..." : "")}</p>
-                  </div>
-                ))}
-                {chatLoading && (
-                  <button type="button" className="ghost-button small" onClick={stopChat}>
-                    停止生成
-                  </button>
-                )}
-              </section>
-            )}
           </div>
         </section>
       </main>

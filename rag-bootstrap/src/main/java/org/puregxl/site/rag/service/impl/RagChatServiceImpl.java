@@ -136,6 +136,15 @@ public class RagChatServiceImpl implements RagChatService {
         };
     }
 
+    /**
+     * 保存记忆对话
+     * @param conversationId
+     * @param userId
+     * @param userQuestion
+     * @param answerBuilder
+     * @param thinkingBuilder
+     * @param startTimeMillis
+     */
     private void saveMemoryAfterComplete(String conversationId,
                                          String userId,
                                          String userQuestion,
