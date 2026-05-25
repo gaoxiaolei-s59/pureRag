@@ -23,7 +23,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class ConversationStore implements ConversationService {
+public class ConversationStore implements ConversationStoreService {
 
     private static final int TITLE_MAX_LENGTH = 30;
     private static final int DESCRIPTION_MAX_LENGTH = 120;

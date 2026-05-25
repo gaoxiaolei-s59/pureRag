@@ -1,12 +1,13 @@
 package org.puregxl.site.rag.service.impl;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.puregxl.site.infra.chat.StreamCancellationHandle;
 import org.puregxl.site.rag.pipeline.ChatPipeLine;
 import org.puregxl.site.rag.pipeline.StreamChatContext;
-import org.puregxl.site.infra.chat.StreamCancellationHandle;
+import org.puregxl.site.rag.service.MemoryService;
+import org.puregxl.site.rag.service.handler.StreamTaskManager;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,17 +18,18 @@ import static org.mockito.Mockito.when;
 class RagChatServiceImplTest {
 
     @Test
-    void streamChatBuildsContextAndRegistersTaskForStop() {
+    void streamChatRegistersTaskAndBindsReturnedHandle() {
         ChatPipeLine chatPipeLine = mock(ChatPipeLine.class);
-        RagChatServiceImpl service = new RagChatServiceImpl(chatPipeLine);
-        AtomicBoolean cancelled = new AtomicBoolean(false);
-        StreamCancellationHandle handle = () -> cancelled.set(true);
+        MemoryService memoryService = mock(MemoryService.class);
+        StreamTaskManager streamTaskManager = mock(StreamTaskManager.class);
+        StreamCancellationHandle handle = mock(StreamCancellationHandle.class);
+        RagChatServiceImpl service = new RagChatServiceImpl(chatPipeLine, memoryService, streamTaskManager);
 
         when(chatPipeLine.execute(any(StreamChatContext.class))).thenReturn(handle);
 
         service.streamChat("什么是 RAG？", "conv-1", true, new SseEmitter(1000L));
 
-        var contextCaptor = org.mockito.ArgumentCaptor.forClass(StreamChatContext.class);
+        ArgumentCaptor<StreamChatContext> contextCaptor = ArgumentCaptor.forClass(StreamChatContext.class);
         verify(chatPipeLine).execute(contextCaptor.capture());
         StreamChatContext context = contextCaptor.getValue();
         assertThat(context.getQuestion()).isEqualTo("什么是 RAG？");
@@ -35,9 +37,19 @@ class RagChatServiceImplTest {
         assertThat(context.isDeepThinking()).isTrue();
         assertThat(context.getTaskId()).isNotBlank();
         assertThat(context.getCallback()).isNotNull();
+        verify(streamTaskManager).register(any(), any(), any());
+        verify(streamTaskManager).bindHandle(context.getTaskId(), handle);
+    }
 
-        service.stopTask(context.getTaskId());
+    @Test
+    void stopTaskDelegatesToDistributedTaskManager() {
+        ChatPipeLine chatPipeLine = mock(ChatPipeLine.class);
+        MemoryService memoryService = mock(MemoryService.class);
+        StreamTaskManager streamTaskManager = mock(StreamTaskManager.class);
+        RagChatServiceImpl service = new RagChatServiceImpl(chatPipeLine, memoryService, streamTaskManager);
 
-        assertThat(cancelled).isTrue();
+        service.stopTask("task-1");
+
+        verify(streamTaskManager).cancel("task-1");
     }
 }

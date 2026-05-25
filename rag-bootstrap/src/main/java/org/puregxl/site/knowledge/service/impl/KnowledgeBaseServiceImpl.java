@@ -53,6 +53,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .eq(KnowledgeBaseDO::getName, request.getName().trim())
                 .or()
                 .eq(KnowledgeBaseDO::getCollectionName, collectionName));
+
         if (count != null && count > 0) {
             throw new ServiceException("知识库名称或向量集合已存在，禁止重复创建");
         }

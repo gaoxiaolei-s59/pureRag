@@ -36,8 +36,10 @@ import {
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Conversation,
   createKnowledgeBase,
   deleteKnowledgeDocument,
+  fetchConversations,
   fetchKnowledgeBases,
   fetchKnowledgeDocuments,
   getStoredToken,
@@ -58,6 +60,11 @@ type ChatMessage = {
 type ViewMode = "chat" | "knowledge";
 
 const DEFAULT_CHUNK_CONFIG = JSON.stringify({ chunkSize: 512, overlapSize: 128 }, null, 2);
+const USER_ID_KEY = "rag-web:user-id";
+
+function createConversationId() {
+  return crypto.randomUUID().replaceAll("-", "");
+}
 
 function formatBytes(value?: number) {
   if (!value) {
@@ -86,6 +93,7 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [token, setToken] = useState(getStoredToken());
   const [tokenDraft, setTokenDraft] = useState(getStoredToken());
+  const [userId, setUserId] = useState(localStorage.getItem(USER_ID_KEY) ?? "");
   const [userName, setUserName] = useState("admin");
   const [password, setPassword] = useState("123456");
   const [notice, setNotice] = useState("准备就绪");
@@ -111,7 +119,9 @@ export function App() {
   const [chunkStrategy, setChunkStrategy] = useState("fixed_size");
   const [chunkConfig, setChunkConfig] = useState(DEFAULT_CHUNK_CONFIG);
 
-  const [conversationId, setConversationId] = useState("001");
+  const [conversationId, setConversationId] = useState(createConversationId());
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationSearch, setConversationSearch] = useState("");
   const [question, setQuestion] = useState("");
   const [deepThinking, setDeepThinking] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -135,6 +145,16 @@ export function App() {
 
   const successDocs = documents.filter((item) => item.status === "success").length;
 
+  const filteredConversations = useMemo(() => {
+    const keyword = conversationSearch.trim().toLowerCase();
+    if (!keyword) {
+      return conversations;
+    }
+    return conversations.filter((item) =>
+      `${item.title ?? ""} ${item.description ?? ""}`.toLowerCase().includes(keyword)
+    );
+  }, [conversationSearch, conversations]);
+
   async function refreshBases() {
     if (!getStoredToken()) {
       setNotice("请先登录或填写 s-token");
@@ -152,6 +172,20 @@ export function App() {
       setNotice(error instanceof Error ? error.message : "刷新知识库失败");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshConversations(nextUserId = userId) {
+    if (!nextUserId) {
+      setConversations([]);
+      return;
+    }
+    try {
+      const records = await fetchConversations(nextUserId);
+      setConversations(records ?? []);
+      setNotice("会话列表已刷新");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "刷新会话失败");
     }
   }
 
@@ -175,6 +209,7 @@ export function App() {
   useEffect(() => {
     if (token) {
       void refreshBases();
+      void refreshConversations();
       return;
     }
     setNotice("请先登录或填写 s-token");
@@ -192,8 +227,14 @@ export function App() {
       setToken(response.token);
       setTokenDraft(response.token);
       setStoredToken(response.token);
+      const nextUserId = response.userId ?? "";
+      setUserId(nextUserId);
+      if (nextUserId) {
+        localStorage.setItem(USER_ID_KEY, nextUserId);
+      }
       setNotice("登录成功，s-token 已保存");
       await refreshBases();
+      await refreshConversations(nextUserId);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "登录失败");
     } finally {
@@ -210,8 +251,32 @@ export function App() {
       setBases([]);
       setSelectedKbId("");
       setDocuments([]);
+      setConversations([]);
+      setUserId("");
+      localStorage.removeItem(USER_ID_KEY);
       setKbDetailOpen(false);
+      setConversationId(createConversationId());
+      setMessages([]);
     }
+  }
+
+  function handleNewConversation() {
+    abortRef.current?.abort();
+    setConversationId(createConversationId());
+    setMessages([]);
+    setQuestion("");
+    setChatLoading(false);
+    setNotice("已创建新对话");
+  }
+
+  function handleSelectConversation(conversation: Conversation) {
+    abortRef.current?.abort();
+    setConversationId(conversation.id);
+    setMessages([]);
+    setQuestion("");
+    setDeepThinking(conversation.deepThinking === 1);
+    setChatLoading(false);
+    setNotice(`已切换到会话：${conversation.title || conversation.id}`);
   }
 
   async function handleCreateKb(event: FormEvent) {
@@ -338,6 +403,7 @@ export function App() {
           },
           onDone: () => {
             setChatLoading(false);
+            void refreshConversations();
           }
         },
         controller.signal
@@ -446,7 +512,7 @@ export function App() {
               <span>快速开始</span>
               <b>新内容</b>
             </div>
-            <button type="button" className="new-chat-card" onClick={() => setMessages([])}>
+            <button type="button" className="new-chat-card" onClick={handleNewConversation}>
               <span className="plus-cube">
                 <Plus size={22} />
               </span>
@@ -468,14 +534,45 @@ export function App() {
             </div>
             <label className="soft-search">
               <Search size={18} />
-              <input placeholder="搜索对话..." />
+              <input
+                value={conversationSearch}
+                onChange={(event) => setConversationSearch(event.target.value)}
+                placeholder="搜索对话..."
+              />
             </label>
           </section>
 
-          <div className="empty-chat-history">
-            <MessageSquare size={54} />
-            <span>暂无对话记录</span>
-          </div>
+          {filteredConversations.length > 0 ? (
+            <section className="conversation-list">
+              <div className="conversation-list-head">
+                <span>最近对话</span>
+                <button type="button" onClick={() => void refreshConversations()}>
+                  <RefreshCw size={15} />
+                </button>
+              </div>
+              <div className="conversation-items">
+                {filteredConversations.map((conversation) => (
+                  <button
+                    type="button"
+                    key={conversation.id}
+                    className={`conversation-item ${conversation.id === conversationId ? "active" : ""}`}
+                    onClick={() => handleSelectConversation(conversation)}
+                  >
+                    <MessageSquareText size={17} />
+                    <span>
+                      <strong>{conversation.title || "未命名对话"}</strong>
+                      <small>{conversation.description || conversation.id}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="empty-chat-history">
+              <MessageSquare size={54} />
+              <span>{userId ? "暂无对话记录" : "登录后显示对话记录"}</span>
+            </div>
+          )}
 
           <div className="chat-user">
             <span className="user-avatar">A</span>
@@ -486,7 +583,7 @@ export function App() {
 
         <section className="chat-main">
           <header className="chat-topbar">
-            <strong>新对话</strong>
+            <strong>{conversations.find((item) => item.id === conversationId)?.title || "新对话"}</strong>
             <button className="star-button" type="button">
               <Github size={18} />
               Star

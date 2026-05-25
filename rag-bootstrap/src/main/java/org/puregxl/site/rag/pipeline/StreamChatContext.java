@@ -5,6 +5,8 @@ import lombok.Data;
 import lombok.Setter;
 import org.puregxl.site.infra.chat.StreamCallback;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
+import org.puregxl.site.rag.core.rewrite.MutiQueryRewriteService;
+import org.puregxl.site.rag.core.rewrite.RewriteResult;
 
 import java.util.List;
 
@@ -21,4 +23,7 @@ public class StreamChatContext {
 
     @Setter
     private List<ChatMessage> history;
+
+    @Setter
+    private RewriteResult rewriteResult;
 }

@@ -5,6 +5,8 @@ import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.rag.config.RAGDefaultProperties;
+import org.puregxl.site.rag.core.rewrite.QueryRewriteService;
+import org.puregxl.site.rag.core.rewrite.RewriteResult;
 import org.puregxl.site.rag.retrieval.RagRetrievalService;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.infra.chat.LLMService;
@@ -27,13 +29,14 @@ import java.util.stream.IntStream;
 public class ChatPipeLine {
     private static final double DEFAULT_TEMPERATURE = 0.2D;
     private static final double DEFAULT_TOP_P = 0.8D;
+    private static final int REWRITE_HISTORY_TURNS = 4;
 
     private final EmbeddingService embeddingService;
     private final RagRetrievalService retrievalService;
-    private final RerankService rerankService;
     private final LLMService llmService;
     private final RAGDefaultProperties ragDefaultProperties;
     private final MemoryService memoryService;
+    private final QueryRewriteService queryRewriteService;
 
     /**
      * 执行一次基础 RAG 流式问答。
@@ -53,8 +56,12 @@ public class ChatPipeLine {
         //1.加载对话记忆，后续与知识库召回内容一起组装到模型请求中。
         List<ChatMessage> memoryMessages = loadMemory(context);
 
+        // 2.基于最近 4 轮用户/助手对话做问题改写，避免把摘要系统消息一并喂给改写模型。
+        Rewrite(context.getQuestion(), latestRewriteHistory(memoryMessages), context);
+
         String question = context.getQuestion().trim();
-        List<Float> queryEmbedding = embeddingService.embed(question);
+        String retrievalQuestion = resolveRetrievalQuestion(context, question);
+        List<Float> queryEmbedding = embeddingService.embed(retrievalQuestion);
         List<RetrievedChunk> candidates = retrievalService.searchSimilarChunks(
                 ragDefaultProperties.getCollectionName(),
                 queryEmbedding,
@@ -77,13 +84,6 @@ public class ChatPipeLine {
         return chatMessages;
     }
 
-//    private List<RetrievedChunk> rerank(String question, List<RetrievedChunk> candidates) {
-//        if (CollUtil.isEmpty(candidates)) {
-//            return List.of();
-//        }
-//        int topN = safePositive(ragDefaultProperties.getRerankTopN(), 4);
-//        return rerankService.rerank(question, candidates, topN);
-//    }
 
     private ChatRequest buildChatRequest(String question, List<RetrievedChunk> contextChunks, List<ChatMessage> memoryMessages, boolean deepThinking) {
         List<ChatMessage> messages = new java.util.ArrayList<>();
@@ -98,6 +98,41 @@ public class ChatPipeLine {
                 .temperature(DEFAULT_TEMPERATURE)
                 .topP(DEFAULT_TOP_P)
                 .build();
+    }
+
+    /**
+     * 实现用户的问题改写
+     */
+    public void Rewrite(String userQuestion, List<ChatMessage> history, StreamChatContext context) {
+        RewriteResult rewrite = queryRewriteService.rewrite(userQuestion, history);
+        context.setRewriteResult(rewrite);
+    }
+
+    /**
+     * 抽取最近的几轮对话
+     * @param history
+     * @return
+     */
+    private List<ChatMessage> latestRewriteHistory(List<ChatMessage> history) {
+        if (CollUtil.isEmpty(history)) {
+            return List.of();
+        }
+        List<ChatMessage> conversationalHistory = history.stream()
+                .filter(message -> message != null && message.getRole() != ChatMessage.Role.SYSTEM)
+                .toList();
+        int keepMessages = REWRITE_HISTORY_TURNS * 2;
+        if (conversationalHistory.size() <= keepMessages) {
+            return conversationalHistory;
+        }
+        return conversationalHistory.subList(conversationalHistory.size() - keepMessages, conversationalHistory.size());
+    }
+
+    private String resolveRetrievalQuestion(StreamChatContext context, String originalQuestion) {
+        RewriteResult rewriteResult = context.getRewriteResult();
+        if (rewriteResult == null || StrUtil.isBlank(rewriteResult.getRewrittenQuestion())) {
+            return originalQuestion;
+        }
+        return rewriteResult.getRewrittenQuestion().trim();
     }
 
     private String buildSystemPrompt(List<RetrievedChunk> contextChunks) {

@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 
 public class RAGEvaluator {
 
+
     private static final String CHAT_API_URL = property("eval.chat.url", "https://api.siliconflow.cn/v1/chat/completions");
     private static final String EMBEDDING_API_URL = property("eval.embedding.url", "https://api.siliconflow.cn/v1/embeddings");
     private static final String API_KEY = property("eval.apiKey", "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf");
@@ -40,6 +41,7 @@ public class RAGEvaluator {
     private static final double NO_ANSWER_SCORE_THRESHOLD = Double.parseDouble(property("eval.noAnswerScoreThreshold", "0.55"));
     private static final double STABLE_AVERAGE_SCORE = Double.parseDouble(property("eval.stableAverageScore", "4.8"));
     private static final Gson gson = new Gson();
+
     private static final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)

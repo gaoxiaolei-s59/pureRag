@@ -30,6 +30,7 @@
         <s3.version>2.33.4</s3.version>
         <okhttp.version>5.2.1</okhttp.version>
         <okio.version>3.16.1</okio.version>
+        <elasticsearch.version>8.15.3</elasticsearch.version>
     </properties>
 
 
@@ -128,6 +129,18 @@
                 <groupId>com.squareup.okio</groupId>
                 <artifactId>okio-jvm</artifactId>
                 <version>${okio.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>co.elastic.clients</groupId>
+                <artifactId>elasticsearch-java</artifactId>
+                <version>${elasticsearch.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.elasticsearch.client</groupId>
+                <artifactId>elasticsearch-rest-client</artifactId>
+                <version>${elasticsearch.version}</version>
             </dependency>
         </dependencies>
 

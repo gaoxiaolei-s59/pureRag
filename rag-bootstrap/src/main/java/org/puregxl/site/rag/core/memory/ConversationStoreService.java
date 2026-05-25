@@ -2,7 +2,7 @@ package org.puregxl.site.rag.core.memory;
 
 
 
-public interface ConversationService {
+public interface ConversationStoreService {
 
     /**
      * 保存会话接口

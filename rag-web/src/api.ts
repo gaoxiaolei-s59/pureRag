@@ -56,6 +56,15 @@ export type LoginResponse = {
   userId?: string;
 };
 
+export type Conversation = {
+  id: string;
+  userId: string;
+  title?: string;
+  description?: string;
+  deepThinking?: number;
+  pinned?: number;
+};
+
 export type UploadDocumentParams = {
   kbId: string;
   sourceType: "file" | "url";
@@ -176,6 +185,10 @@ export function deleteKnowledgeDocument(docId: string) {
   return request<void>(`/knowledge-base/docs/${docId}`, {
     method: "DELETE"
   });
+}
+
+export function fetchConversations(userId: string) {
+  return request<Conversation[]>(`/conversation?userId=${encodeURIComponent(userId)}`);
 }
 
 export type ChatHandlers = {
