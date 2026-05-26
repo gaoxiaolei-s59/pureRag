@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Loader2,
   LogIn,
+  LogOut,
   MessageSquare,
   MessageSquareText,
   PanelLeftClose,
@@ -53,6 +54,7 @@ import {
   KnowledgeChunk,
   KnowledgeDocument,
   login,
+  logout,
   setStoredToken,
   startDocumentChunk,
   stopChatTask,
@@ -64,18 +66,26 @@ import {
 } from "./api";
 
 type ChatMessage = {
+  id: string;
   role: "user" | "assistant" | "system";
   content: string;
   thinkingContent?: string;
+  thinkingCollapsed?: boolean;
+  thinkingStartedAt?: number;
+  thinkingDurationSeconds?: number;
 };
 
-type ViewMode = "chat" | "knowledge";
+type AppView = "login" | "chat" | "knowledge";
 
 const DEFAULT_CHUNK_CONFIG = JSON.stringify({ chunkSize: 512, overlapSize: 128 }, null, 2);
 const USER_ID_KEY = "rag-web:user-id";
 
 function createConversationId() {
   return crypto.randomUUID().replaceAll("-", "");
+}
+
+function createMessageId() {
+  return crypto.randomUUID();
 }
 
 function formatBytes(value?: number) {
@@ -102,8 +112,8 @@ function statusText(status?: string) {
 }
 
 export function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [token, setToken] = useState(getStoredToken());
+  const [appView, setAppView] = useState<AppView>(token ? "chat" : "login");
   const [tokenDraft, setTokenDraft] = useState(getStoredToken());
   const [userId, setUserId] = useState(localStorage.getItem(USER_ID_KEY) ?? "");
   const [userName, setUserName] = useState("admin");
@@ -153,6 +163,36 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const taskIdRef = useRef("");
+
+  function finalizeAssistantThinking(messageId: string) {
+    setMessages((current) =>
+      current.map((message) => {
+        if (message.id !== messageId || !message.thinkingContent) {
+          return message;
+        }
+        return {
+          ...message,
+          thinkingCollapsed: true,
+          thinkingDurationSeconds: message.thinkingStartedAt
+            ? Math.max(1, Math.round((Date.now() - message.thinkingStartedAt) / 1000))
+            : message.thinkingDurationSeconds
+        };
+      })
+    );
+  }
+
+  function toggleThinking(messageId: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              thinkingCollapsed: !message.thinkingCollapsed
+            }
+          : message
+      )
+    );
+  }
 
   async function stopActiveChat(showStoppedNotice = true) {
     const taskId = taskIdRef.current;
@@ -307,6 +347,14 @@ export function App() {
   }
 
   useEffect(() => {
+    if (!token) {
+      setAppView("login");
+      return;
+    }
+    setAppView((current) => (current === "login" ? "chat" : current));
+  }, [token]);
+
+  useEffect(() => {
     if (token) {
       void refreshBases();
       void refreshConversations();
@@ -328,6 +376,7 @@ export function App() {
       setToken(response.token);
       setTokenDraft(response.token);
       setStoredToken(response.token);
+      setAppView("chat");
       const nextUserId = response.userId ?? "";
       setUserId(nextUserId);
       if (nextUserId) {
@@ -343,8 +392,15 @@ export function App() {
     }
   }
 
-  function handleSaveToken() {
+  async function handleSaveToken() {
     const nextToken = tokenDraft.trim();
+    if (!nextToken) {
+      try {
+        await logout();
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "退出登录失败");
+      }
+    }
     setToken(nextToken);
     setStoredToken(nextToken);
     setNotice(nextToken ? "s-token 已保存" : "s-token 已清空");
@@ -358,7 +414,10 @@ export function App() {
       setKbDetailOpen(false);
       setConversationId(createConversationId());
       setMessages([]);
+      setAppView("login");
+      return;
     }
+    setAppView("chat");
   }
 
   function handleNewConversation() {
@@ -600,13 +659,20 @@ export function App() {
 
     await stopActiveChat(false);
     const controller = new AbortController();
+    const assistantMessageId = createMessageId();
     abortRef.current = controller;
     setQuestion("");
     setChatLoading(true);
     setMessages((current) => [
       ...current,
-      { role: "user", content: userQuestion },
-      { role: "assistant", content: "", thinkingContent: "" }
+      { id: createMessageId(), role: "user", content: userQuestion },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        thinkingContent: "",
+        thinkingCollapsed: false
+      }
     ]);
 
     try {
@@ -618,30 +684,36 @@ export function App() {
           },
           onToken: (text) => {
             setMessages((current) => {
-              const next = [...current];
-              const last = next[next.length - 1];
-              next[next.length - 1] = { ...last, content: `${last.content}${text}` };
-              return next;
+              return current.map((message) =>
+                message.id === assistantMessageId
+                  ? { ...message, content: `${message.content}${text}` }
+                  : message
+              );
             });
           },
           onThinking: (text) => {
             setMessages((current) => {
-              const next = [...current];
-              const last = next[next.length - 1];
-              next[next.length - 1] = {
-                ...last,
-                thinkingContent: `${last.thinkingContent ?? ""}${text}`
-              };
-              return next;
+              return current.map((message) =>
+                message.id === assistantMessageId
+                  ? {
+                      ...message,
+                      thinkingCollapsed: false,
+                      thinkingStartedAt: message.thinkingStartedAt ?? Date.now(),
+                      thinkingContent: `${message.thinkingContent ?? ""}${text}`
+                    }
+                  : message
+              );
             });
           },
           onError: (message) => {
             setNotice(message);
           },
           onCancelled: (message) => {
+            finalizeAssistantThinking(assistantMessageId);
             setNotice(message);
           },
           onDone: () => {
+            finalizeAssistantThinking(assistantMessageId);
             setChatLoading(false);
             taskIdRef.current = "";
             void refreshConversations();
@@ -654,6 +726,7 @@ export function App() {
         setNotice(error instanceof Error ? error.message : "聊天请求失败");
       }
     } finally {
+      finalizeAssistantThinking(assistantMessageId);
       taskIdRef.current = "";
       setChatLoading(false);
     }
@@ -671,7 +744,13 @@ export function App() {
     await stopActiveChat(true);
   }
 
-  if (!token) {
+  async function handleLogout() {
+    await stopActiveChat(false);
+    setTokenDraft("");
+    await handleSaveToken();
+  }
+
+  if (appView === "login") {
     return (
       <main className="login-shell">
         <section className="login-hero">
@@ -733,7 +812,7 @@ export function App() {
     );
   }
 
-  if (viewMode === "chat") {
+  if (appView === "chat") {
     return (
       <main className="chat-shell">
         <aside className="chat-sidebar">
@@ -746,6 +825,11 @@ export function App() {
               <span>Powered by AI</span>
             </div>
           </div>
+
+          <button type="button" className="outline-button sidebar-logout" onClick={() => void handleLogout()}>
+            <LogOut size={16} />
+            退出登录
+          </button>
 
           <section className="quick-card">
             <div className="quick-card-head">
@@ -761,7 +845,7 @@ export function App() {
                 <small>从空白开始</small>
               </span>
             </button>
-            <button type="button" className="mini-pill" onClick={() => setViewMode("knowledge")}>
+            <button type="button" className="mini-pill" onClick={() => setAppView("knowledge")}>
               <Settings size={16} />
               管理后台
             </button>
@@ -857,7 +941,7 @@ export function App() {
                 </div>
               ) : (
                 messages.map((message, index) => (
-                  <article className={`chat-turn ${message.role}`} key={`${message.role}-${index}`}>
+                  <article className={`chat-turn ${message.role}`} key={message.id}>
                     {message.role === "user" ? (
                       <>
                         <div className="user-bubble">{message.content}</div>
@@ -874,9 +958,26 @@ export function App() {
                       <>
                         <div className="assistant-body">
                           {message.thinkingContent ? (
-                            <div className="assistant-thinking">
-                              <div className="assistant-thinking-label">深度思考</div>
-                              <div>{message.thinkingContent}</div>
+                            <div className="assistant-thinking-panel">
+                              <button
+                                type="button"
+                                className={`assistant-thinking-toggle ${message.thinkingCollapsed ? "collapsed" : ""}`}
+                                onClick={() => toggleThinking(message.id)}
+                                aria-expanded={!message.thinkingCollapsed}
+                              >
+                                <span className="assistant-thinking-summary">
+                                  <Brain size={16} />
+                                  <span>
+                                    {message.thinkingDurationSeconds
+                                      ? `已思考（用时 ${message.thinkingDurationSeconds} 秒）`
+                                      : "深度思考中..."}
+                                  </span>
+                                </span>
+                                <ChevronDown className="assistant-thinking-arrow" size={16} />
+                              </button>
+                              {!message.thinkingCollapsed ? (
+                                <div className="assistant-thinking">{message.thinkingContent}</div>
+                              ) : null}
                             </div>
                           ) : null}
                           <div className="assistant-text">
@@ -959,7 +1060,7 @@ export function App() {
 
         <nav className="admin-nav">
           <span className="nav-section">导航</span>
-          <button type="button" className="nav-item" onClick={() => setViewMode("chat")}>
+          <button type="button" className="nav-item" onClick={() => setAppView("chat")}>
             <Home size={19} />
             新对话
           </button>
@@ -1010,9 +1111,13 @@ export function App() {
             <kbd>Ctrl K</kbd>
           </label>
           <div className="admin-top-actions">
-            <button type="button" className="outline-button" onClick={() => setViewMode("chat")}>
+            <button type="button" className="outline-button" onClick={() => setAppView("chat")}>
               <MessageSquare size={18} />
               返回聊天
+            </button>
+            <button type="button" className="outline-button" onClick={() => void handleLogout()}>
+              <LogOut size={18} />
+              退出登录
             </button>
             <button type="button" className="outline-button">
               <Github size={18} />

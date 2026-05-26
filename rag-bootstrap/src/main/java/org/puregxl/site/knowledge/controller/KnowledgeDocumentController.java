@@ -1,15 +1,16 @@
 package org.puregxl.site.knowledge.controller;
 
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.puregxl.site.framework.convention.Result;
+import org.puregxl.site.framework.web.Results;
 import org.puregxl.site.knowledge.dto.request.KnowledgeDocumentPageRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeDocumentUpdateRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeDocumentUploadRequest;
 import org.puregxl.site.knowledge.dto.response.KnowledgeDocumentResponse;
 import org.puregxl.site.knowledge.service.KnowledgeDocumentService;
-import org.puregxl.site.framework.convention.Result;
-import org.puregxl.site.framework.web.Results;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,8 +26,8 @@ public class KnowledgeDocumentController {
      */
     @PostMapping(value = "/knowledge-base/{kb-id}/docs/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<KnowledgeDocumentResponse> uploadKnowledgeDocument(@PathVariable("kb-id") String kbId,
-                                                    @RequestPart(value = "file", required = false) MultipartFile file,
-                                                    @ModelAttribute KnowledgeDocumentUploadRequest requestParam) {
+                                                                     @RequestPart(value = "file", required = false) MultipartFile file,
+                                                                     @ModelAttribute KnowledgeDocumentUploadRequest requestParam) {
         return Results.success(documentService.uploadKnowledgeDocument(kbId, requestParam, file));
     }
 
@@ -73,7 +74,7 @@ public class KnowledgeDocumentController {
      */
     @GetMapping("/knowledge-base/{kb-id}/docs")
     public Result<IPage<KnowledgeDocumentResponse>> pageKnowledgeDocument(@PathVariable(value = "kb-id") String kbId,
-                                                   KnowledgeDocumentPageRequest requestParam) {
+                                                                          KnowledgeDocumentPageRequest requestParam) {
         return Results.success(documentService.pageKnowledgeDocument(kbId, requestParam));
     }
 

@@ -61,6 +61,16 @@ public class AuthServiceImpl implements AuthService {
         return response;
     }
 
+    /**
+     * 执行用户登出。
+     * 这里显式调用 Sa-Token 的登出逻辑，统一清理当前登录会话，
+     * 避免前端仅删除 localStorage 后，浏览器残留 Cookie 仍然让受保护接口继续放行。
+     */
+    @Override
+    public void logout() {
+        StpUtil.logout();
+    }
+
 
     /**
      * 根据用户名查询用户实体

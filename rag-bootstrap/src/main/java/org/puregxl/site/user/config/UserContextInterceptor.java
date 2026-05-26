@@ -20,7 +20,6 @@ public class UserContextInterceptor implements HandlerInterceptor {
             // SSE 超时或异常关闭后，容器可能用异步/错误分发重新进入 MVC；此时 Sa-Token 请求上下文可能已释放。
             return true;
         }
-
         // Sa-Token 会按配置从请求头、Cookie 等位置读取 token；未登录时抛出 NotLoginException，由全局异常处理返回统一结果。
         StpUtil.checkLogin();
 

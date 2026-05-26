@@ -5,4 +5,6 @@ import org.puregxl.site.user.dto.response.LoginResponse;
 
 public interface AuthService {
     LoginResponse login(LoginRequest request);
+
+    void logout();
 }

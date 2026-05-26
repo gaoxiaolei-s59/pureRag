@@ -143,6 +143,12 @@ export function login(userName: string, password: string) {
   });
 }
 
+export function logout() {
+  return request<void>("/auth/logout", {
+    method: "POST"
+  });
+}
+
 export function fetchKnowledgeBases() {
   return request<PageResult<KnowledgeBase>>("/knowledge-base?current=1&size=50");
 }

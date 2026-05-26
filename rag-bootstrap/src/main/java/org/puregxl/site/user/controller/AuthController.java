@@ -38,5 +38,15 @@ public class AuthController {
         return Results.success("ok");
     }
 
+    /**
+     * 用户退出登录。
+     * 显式注销当前 Sa-Token 会话，确保请求头与 Cookie 两侧登录态都被统一清理。
+     */
+    @PostMapping("/auth/logout")
+    public Result<Void> logout() {
+        authService.logout();
+        return Results.success();
+    }
+
 
 }
