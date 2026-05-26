@@ -15,10 +15,11 @@ import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.infra.framework.convention.RetrievedChunk;
-import org.puregxl.site.infra.rerank.RerankService;
 import org.puregxl.site.rag.service.MemoryService;
+import org.puregxl.site.rag.support.PromptTemplateLoader;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -30,6 +31,7 @@ public class ChatPipeLine {
     private static final double DEFAULT_TEMPERATURE = 0.2D;
     private static final double DEFAULT_TOP_P = 0.8D;
     private static final int REWRITE_HISTORY_TURNS = 4;
+    private static final String SYSTEM_PROMPT_RESOURCE_PATH = "prompt/rag-system-prompt.txt";
 
     private final EmbeddingService embeddingService;
     private final RagRetrievalService retrievalService;
@@ -37,6 +39,7 @@ public class ChatPipeLine {
     private final RAGDefaultProperties ragDefaultProperties;
     private final MemoryService memoryService;
     private final QueryRewriteService queryRewriteService;
+    private final PromptTemplateLoader promptTemplateLoader;
 
     /**
      * 执行一次基础 RAG 流式问答。
@@ -86,7 +89,7 @@ public class ChatPipeLine {
 
 
     private ChatRequest buildChatRequest(String question, List<RetrievedChunk> contextChunks, List<ChatMessage> memoryMessages, boolean deepThinking) {
-        List<ChatMessage> messages = new java.util.ArrayList<>();
+        List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(buildSystemPrompt(contextChunks)));
         if (CollUtil.isNotEmpty(memoryMessages)) {
             messages.addAll(memoryMessages);
@@ -141,15 +144,8 @@ public class ChatPipeLine {
                 : IntStream.range(0, contextChunks.size())
                 .mapToObj(i -> "[" + (i + 1) + "] " + StrUtil.blankToDefault(contextChunks.get(i).getText(), ""))
                 .collect(Collectors.joining("\n\n"));
-
-        return """
-                你是一个严谨的知识库问答助手。请优先依据“知识库上下文”回答用户问题。
-                如果上下文不足以回答，请明确说明知识库中没有足够信息，不要编造。
-                回答应简洁、准确；使用到上下文时，可以在句末标注对应编号，例如 [1]。
-
-                知识库上下文：
-                %s
-                """.formatted(contextText);
+        return promptTemplateLoader.load(SYSTEM_PROMPT_RESOURCE_PATH)
+                .replace("{{context}}", contextText);
     }
 
     private int safePositive(Integer value, int fallback) {

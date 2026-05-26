@@ -1,0 +1,9 @@
+请根据用户的第一条问题生成会话标题和描述。
+要求：
+1. title 控制在 20 个中文字符以内。
+2. description 控制在 60 个中文字符以内。
+3. 只输出 JSON，不要输出 Markdown、代码块或额外解释。
+4. JSON 格式：{"title":"...", "description":"..."}
+
+用户问题：
+{{question}}

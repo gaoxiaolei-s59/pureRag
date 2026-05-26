@@ -38,23 +38,35 @@ import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useSta
 import {
   Conversation,
   createKnowledgeBase,
+  createKnowledgeChunk,
+  deleteKnowledgeBase,
+  deleteKnowledgeChunk,
   deleteKnowledgeDocument,
   fetchConversations,
+  fetchKnowledgeBaseDetail,
   fetchKnowledgeBases,
+  fetchKnowledgeChunks,
+  fetchKnowledgeDocumentDetail,
   fetchKnowledgeDocuments,
   getStoredToken,
   KnowledgeBase,
+  KnowledgeChunk,
   KnowledgeDocument,
   login,
   setStoredToken,
   startDocumentChunk,
+  stopChatTask,
   streamChat,
+  updateKnowledgeBase,
+  updateKnowledgeChunk,
+  updateKnowledgeDocument,
   uploadKnowledgeDocument
 } from "./api";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
+  thinkingContent?: string;
 };
 
 type ViewMode = "chat" | "knowledge";
@@ -104,12 +116,18 @@ export function App() {
 
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [selectedKbId, setSelectedKbId] = useState("");
+  const [selectedKbDetail, setSelectedKbDetail] = useState<KnowledgeBase | null>(null);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [selectedDocDetail, setSelectedDocDetail] = useState<KnowledgeDocument | null>(null);
+  const [docChunks, setDocChunks] = useState<KnowledgeChunk[]>([]);
   const [kbSearch, setKbSearch] = useState("");
+  const [editKbOpen, setEditKbOpen] = useState(false);
+  const [docDetailOpen, setDocDetailOpen] = useState(false);
 
   const [newKbName, setNewKbName] = useState("");
   const [newKbCollection, setNewKbCollection] = useState("");
   const [newKbModel, setNewKbModel] = useState("qwen-emb-8b");
+  const [editKbName, setEditKbName] = useState("");
 
   const [sourceType, setSourceType] = useState<"file" | "url">("file");
   const [sourceUrl, setSourceUrl] = useState("https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf");
@@ -118,6 +136,13 @@ export function App() {
   const [scheduleCron, setScheduleCron] = useState("0 0/30 * * * ?");
   const [chunkStrategy, setChunkStrategy] = useState("fixed_size");
   const [chunkConfig, setChunkConfig] = useState(DEFAULT_CHUNK_CONFIG);
+  const [docFormName, setDocFormName] = useState("");
+  const [docFormEnabled, setDocFormEnabled] = useState(true);
+  const [docFormScheduleEnabled, setDocFormScheduleEnabled] = useState(false);
+  const [docFormScheduleCron, setDocFormScheduleCron] = useState("0 0/30 * * * ?");
+  const [docFormChunkStrategy, setDocFormChunkStrategy] = useState("fixed_size");
+  const [docFormChunkConfig, setDocFormChunkConfig] = useState(DEFAULT_CHUNK_CONFIG);
+  const [newChunkContent, setNewChunkContent] = useState("");
 
   const [conversationId, setConversationId] = useState(createConversationId());
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -127,6 +152,26 @@ export function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const taskIdRef = useRef("");
+
+  async function stopActiveChat(showStoppedNotice = true) {
+    const taskId = taskIdRef.current;
+    let stopFailed = false;
+    if (taskId) {
+      try {
+        await stopChatTask(taskId);
+      } catch (error) {
+        stopFailed = true;
+        setNotice(error instanceof Error ? error.message : "停止聊天失败");
+      }
+    }
+    abortRef.current?.abort();
+    taskIdRef.current = "";
+    setChatLoading(false);
+    if (showStoppedNotice && !stopFailed) {
+      setNotice("已停止当前聊天请求");
+    }
+  }
 
   const selectedKb = useMemo(
     () => bases.find((item) => item.id === selectedKbId),
@@ -206,6 +251,61 @@ export function App() {
     }
   }
 
+  async function refreshKnowledgeBaseDetail(kbId = selectedKbId) {
+    if (!kbId) {
+      setSelectedKbDetail(null);
+      return;
+    }
+    try {
+      const detail = await fetchKnowledgeBaseDetail(kbId);
+      setSelectedKbDetail(detail);
+      setEditKbName(detail.name);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "加载知识库详情失败");
+    }
+  }
+
+  async function openDocumentDetail(docId: string) {
+    setLoading(true);
+    try {
+      const [detail, chunks] = await Promise.all([fetchKnowledgeDocumentDetail(docId), fetchKnowledgeChunks(docId)]);
+      setSelectedDocDetail(detail);
+      setDocChunks(chunks ?? []);
+      setDocFormName(detail.docName ?? "");
+      setDocFormEnabled(detail.enabled !== 0);
+      setDocFormScheduleEnabled(detail.scheduleEnabled === 1);
+      setDocFormScheduleCron(detail.scheduleCron ?? "0 0/30 * * * ?");
+      setDocFormChunkStrategy(detail.chunkStrategy ?? "fixed_size");
+      setDocFormChunkConfig(detail.chunkConfig ?? DEFAULT_CHUNK_CONFIG);
+      setNewChunkContent("");
+      setDocDetailOpen(true);
+      setNotice("文档详情已加载");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "加载文档详情失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshDocumentDetail(docId = selectedDocDetail?.id) {
+    if (!docId) {
+      return;
+    }
+    try {
+      const [detail, chunks] = await Promise.all([fetchKnowledgeDocumentDetail(docId), fetchKnowledgeChunks(docId)]);
+      setSelectedDocDetail(detail);
+      setDocChunks(chunks ?? []);
+      setDocFormName(detail.docName ?? "");
+      setDocFormEnabled(detail.enabled !== 0);
+      setDocFormScheduleEnabled(detail.scheduleEnabled === 1);
+      setDocFormScheduleCron(detail.scheduleCron ?? "0 0/30 * * * ?");
+      setDocFormChunkStrategy(detail.chunkStrategy ?? "fixed_size");
+      setDocFormChunkConfig(detail.chunkConfig ?? DEFAULT_CHUNK_CONFIG);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "刷新文档详情失败");
+    }
+  }
+
   useEffect(() => {
     if (token) {
       void refreshBases();
@@ -217,6 +317,7 @@ export function App() {
 
   useEffect(() => {
     void refreshDocuments(selectedKbId);
+    void refreshKnowledgeBaseDetail(selectedKbId);
   }, [selectedKbId]);
 
   async function handleLogin(event: FormEvent) {
@@ -261,7 +362,7 @@ export function App() {
   }
 
   function handleNewConversation() {
-    abortRef.current?.abort();
+    void stopActiveChat(false);
     setConversationId(createConversationId());
     setMessages([]);
     setQuestion("");
@@ -270,7 +371,7 @@ export function App() {
   }
 
   function handleSelectConversation(conversation: Conversation) {
-    abortRef.current?.abort();
+    void stopActiveChat(false);
     setConversationId(conversation.id);
     setMessages([]);
     setQuestion("");
@@ -299,6 +400,46 @@ export function App() {
       await refreshBases();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "创建知识库失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUpdateKb(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedKbId || !editKbName.trim()) {
+      setNotice("请填写知识库名称");
+      return;
+    }
+    setLoading(true);
+    try {
+      await updateKnowledgeBase(selectedKbId, { name: editKbName.trim() });
+      setNotice("知识库已更新");
+      setEditKbOpen(false);
+      await refreshBases();
+      await refreshKnowledgeBaseDetail(selectedKbId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "更新知识库失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteKb() {
+    if (!selectedKbId || !selectedKbDetail) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await deleteKnowledgeBase(selectedKbId);
+      setNotice("知识库已删除");
+      setKbDetailOpen(false);
+      setSelectedKbDetail(null);
+      setSelectedKbId("");
+      await refreshBases();
+      setDocuments([]);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "删除知识库失败");
     } finally {
       setLoading(false);
     }
@@ -368,6 +509,88 @@ export function App() {
     }
   }
 
+  async function handleUpdateDocument(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDocDetail) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await updateKnowledgeDocument(selectedDocDetail.id, {
+        docName: docFormName.trim(),
+        enabled: docFormEnabled,
+        scheduleEnabled: docFormScheduleEnabled,
+        scheduleCron: docFormScheduleEnabled ? docFormScheduleCron : "",
+        chunkStrategy: docFormChunkStrategy,
+        chunkConfig: docFormChunkConfig
+      });
+      setNotice("文档已更新");
+      await refreshDocuments();
+      await refreshDocumentDetail(selectedDocDetail.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "更新文档失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateChunk(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDocDetail || !newChunkContent.trim()) {
+      setNotice("请输入 Chunk 内容");
+      return;
+    }
+    setLoading(true);
+    try {
+      await createKnowledgeChunk(selectedDocDetail.id, {
+        content: newChunkContent.trim(),
+        index: docChunks.length
+      });
+      setNotice("Chunk 已新增");
+      setNewChunkContent("");
+      await refreshDocuments();
+      await refreshDocumentDetail(selectedDocDetail.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "新增 Chunk 失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUpdateChunk(chunkId: string, content: string) {
+    if (!selectedDocDetail || !content.trim()) {
+      setNotice("Chunk 内容不能为空");
+      return;
+    }
+    setLoading(true);
+    try {
+      await updateKnowledgeChunk(selectedDocDetail.id, chunkId, { content: content.trim() });
+      setNotice("Chunk 已更新");
+      await refreshDocumentDetail(selectedDocDetail.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "更新 Chunk 失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteChunk(chunkId: string) {
+    if (!selectedDocDetail) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await deleteKnowledgeChunk(selectedDocDetail.id, chunkId);
+      setNotice("Chunk 已删除");
+      await refreshDocuments();
+      await refreshDocumentDetail(selectedDocDetail.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "删除 Chunk 失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleChat(event: FormEvent) {
     event.preventDefault();
     const userQuestion = question.trim();
@@ -375,7 +598,7 @@ export function App() {
       return;
     }
 
-    abortRef.current?.abort();
+    await stopActiveChat(false);
     const controller = new AbortController();
     abortRef.current = controller;
     setQuestion("");
@@ -383,13 +606,16 @@ export function App() {
     setMessages((current) => [
       ...current,
       { role: "user", content: userQuestion },
-      { role: "assistant", content: "" }
+      { role: "assistant", content: "", thinkingContent: "" }
     ]);
 
     try {
       await streamChat(
         { userQuestion, conversationId, deepThinking },
         {
+          onTask: (taskId) => {
+            taskIdRef.current = taskId;
+          },
           onToken: (text) => {
             setMessages((current) => {
               const next = [...current];
@@ -398,11 +624,26 @@ export function App() {
               return next;
             });
           },
+          onThinking: (text) => {
+            setMessages((current) => {
+              const next = [...current];
+              const last = next[next.length - 1];
+              next[next.length - 1] = {
+                ...last,
+                thinkingContent: `${last.thinkingContent ?? ""}${text}`
+              };
+              return next;
+            });
+          },
           onError: (message) => {
+            setNotice(message);
+          },
+          onCancelled: (message) => {
             setNotice(message);
           },
           onDone: () => {
             setChatLoading(false);
+            taskIdRef.current = "";
             void refreshConversations();
           }
         },
@@ -413,6 +654,7 @@ export function App() {
         setNotice(error instanceof Error ? error.message : "聊天请求失败");
       }
     } finally {
+      taskIdRef.current = "";
       setChatLoading(false);
     }
   }
@@ -425,10 +667,8 @@ export function App() {
     event.currentTarget.form?.requestSubmit();
   }
 
-  function stopChat() {
-    abortRef.current?.abort();
-    setChatLoading(false);
-    setNotice("已停止当前聊天请求");
+  async function stopChat() {
+    await stopActiveChat(true);
   }
 
   if (!token) {
@@ -632,8 +872,21 @@ export function App() {
                       </>
                     ) : (
                       <>
-                        <div className="assistant-text">
-                          {message.content || (chatLoading && index === messages.length - 1 ? "正在思考..." : "")}
+                        <div className="assistant-body">
+                          {message.thinkingContent ? (
+                            <div className="assistant-thinking">
+                              <div className="assistant-thinking-label">深度思考</div>
+                              <div>{message.thinkingContent}</div>
+                            </div>
+                          ) : null}
+                          <div className="assistant-text">
+                            {message.content ||
+                              (chatLoading && index === messages.length - 1
+                                ? message.thinkingContent
+                                  ? "正在整理最终回答..."
+                                  : "正在思考..."
+                                : "")}
+                          </div>
                         </div>
                         <div className="turn-actions">
                           <button type="button" aria-label="复制">
@@ -839,8 +1092,8 @@ export function App() {
                 <div className="document-panel-head">
                   <div>
                     <span className="panel-eyebrow">当前知识库</span>
-                    <strong>{selectedKb ? `${selectedKb.name} 的文档` : "请选择知识库"}</strong>
-                    <small>{selectedKb?.collectionName ?? "选择左侧知识库后查看和上传文档"}</small>
+                    <strong>{selectedKbDetail ? `${selectedKbDetail.name} 的文档` : "请选择知识库"}</strong>
+                    <small>{selectedKbDetail?.collectionName ?? "选择左侧知识库后查看和上传文档"}</small>
                   </div>
                   <div className="section-actions">
                     <button type="button" className="outline-button small" onClick={() => setKbDetailOpen(false)}>
@@ -850,6 +1103,14 @@ export function App() {
                     <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
                       <RefreshCw size={15} />
                       刷新
+                    </button>
+                    <button type="button" className="outline-button small" disabled={!selectedKbDetail} onClick={() => setEditKbOpen(true)}>
+                      <Pencil size={15} />
+                      编辑知识库
+                    </button>
+                    <button type="button" className="outline-button small danger-text" disabled={!selectedKbDetail} onClick={() => void handleDeleteKb()}>
+                      <Trash2 size={15} />
+                      删除知识库
                     </button>
                     <button type="button" className="gradient-button small" disabled={!selectedKbId} onClick={() => setUploadOpen(true)}>
                       <UploadCloud size={15} />
@@ -876,6 +1137,9 @@ export function App() {
                         <span>{formatBytes(doc.fileSize)}</span>
                         <span>{doc.chunkCount ?? 0}</span>
                         <span className="row-actions">
+                          <button type="button" onClick={() => void openDocumentDetail(doc.id)}>
+                            详情
+                          </button>
                           <button type="button" onClick={() => void handleChunk(doc.id)}>
                             分块
                           </button>
@@ -932,6 +1196,127 @@ export function App() {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {editKbOpen && selectedKbDetail && (
+        <Modal title="编辑知识库" description={`更新「${selectedKbDetail.name}」的基础信息`} onClose={() => setEditKbOpen(false)}>
+          <form className="modal-form" onSubmit={handleUpdateKb}>
+            <label>
+              <span>知识库名称</span>
+              <input value={editKbName} onChange={(event) => setEditKbName(event.target.value)} placeholder="请输入知识库名称" />
+            </label>
+            <label>
+              <span>Embedding 模型</span>
+              <input value={selectedKbDetail.embeddingModel} disabled />
+            </label>
+            <label>
+              <span>Collection 名称</span>
+              <input value={selectedKbDetail.collectionName} disabled />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="outline-button" onClick={() => setEditKbOpen(false)}>
+                取消
+              </button>
+              <button type="submit" className="gradient-button" disabled={loading}>
+                {loading ? <Loader2 className="spin" size={16} /> : <Pencil size={16} />}
+                保存
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {docDetailOpen && selectedDocDetail && (
+        <Modal title="文档详情" description={`查看并管理「${selectedDocDetail.docName}」`} onClose={() => setDocDetailOpen(false)}>
+          <form className="modal-form" onSubmit={handleUpdateDocument}>
+            <label>
+              <span>文档名称</span>
+              <input value={docFormName} onChange={(event) => setDocFormName(event.target.value)} placeholder="请输入文档名称" />
+            </label>
+            <label className="toggle modal-toggle">
+              <input checked={docFormEnabled} onChange={(event) => setDocFormEnabled(event.target.checked)} type="checkbox" />
+              启用文档
+            </label>
+            <label className="toggle modal-toggle">
+              <input checked={docFormScheduleEnabled} onChange={(event) => setDocFormScheduleEnabled(event.target.checked)} type="checkbox" />
+              启用定时拉取
+            </label>
+            {docFormScheduleEnabled && (
+              <label>
+                <span>定时表达式</span>
+                <input value={docFormScheduleCron} onChange={(event) => setDocFormScheduleCron(event.target.value)} />
+              </label>
+            )}
+            <label>
+              <span>分块策略</span>
+              <select value={docFormChunkStrategy} onChange={(event) => setDocFormChunkStrategy(event.target.value)}>
+                <option value="fixed_size">fixed_size</option>
+                <option value="structure_aware">structure_aware</option>
+              </select>
+            </label>
+            <label>
+              <span>分块参数 JSON</span>
+              <textarea value={docFormChunkConfig} onChange={(event) => setDocFormChunkConfig(event.target.value)} rows={4} />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="outline-button" onClick={() => setDocDetailOpen(false)}>
+                关闭
+              </button>
+              <button type="submit" className="gradient-button" disabled={loading}>
+                {loading ? <Loader2 className="spin" size={16} /> : <Pencil size={16} />}
+                保存文档
+              </button>
+            </div>
+          </form>
+
+          <div className="section-head">
+            <strong>Chunk 列表</strong>
+            <span>{docChunks.length} 条</span>
+          </div>
+          <form className="modal-form" onSubmit={handleCreateChunk}>
+            <label>
+              <span>新增 Chunk</span>
+              <textarea value={newChunkContent} onChange={(event) => setNewChunkContent(event.target.value)} rows={4} placeholder="输入新的 chunk 内容" />
+            </label>
+            <div className="modal-actions">
+              <button type="submit" className="gradient-button" disabled={loading}>
+                {loading ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
+                新增 Chunk
+              </button>
+            </div>
+          </form>
+          <div className="chunk-editor-list">
+            {docChunks.length ? (
+              docChunks.map((chunk, index) => (
+                <div className="chunk-editor-card" key={chunk.id}>
+                  <div className="chunk-editor-head">
+                    <strong>Chunk #{chunk.chunkIndex ?? index}</strong>
+                    <small>{chunk.charCount ?? chunk.content.length} 字</small>
+                  </div>
+                  <textarea
+                    value={chunk.content}
+                    onChange={(event) =>
+                      setDocChunks((current) =>
+                        current.map((item) => (item.id === chunk.id ? { ...item, content: event.target.value } : item))
+                      )
+                    }
+                    rows={5}
+                  />
+                  <div className="modal-actions">
+                    <button type="button" className="outline-button" onClick={() => void handleUpdateChunk(chunk.id, chunk.content)}>
+                      保存 Chunk
+                    </button>
+                    <button type="button" className="outline-button danger-text" onClick={() => void handleDeleteChunk(chunk.id)}>
+                      删除 Chunk
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-panel">暂无 Chunk，可先手动新增或执行自动分块</div>
+            )}
+          </div>
         </Modal>
       )}
 

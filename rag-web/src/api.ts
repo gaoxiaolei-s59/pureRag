@@ -49,6 +49,20 @@ export type KnowledgeDocument = {
   updateTime?: string;
 };
 
+export type KnowledgeChunk = {
+  id: string;
+  kbId: string;
+  docId: string;
+  chunkIndex?: number;
+  content: string;
+  contentHash?: string;
+  charCount?: number;
+  tokenCount?: number;
+  enabled?: number;
+  createTime?: string;
+  updateTime?: string;
+};
+
 export type LoginResponse = {
   token: string;
   role?: string;
@@ -144,6 +158,23 @@ export function createKnowledgeBase(params: {
   });
 }
 
+export function updateKnowledgeBase(kbId: string, params: { name: string }) {
+  return request<void>(`/knowledge-base/${kbId}`, {
+    method: "PUT",
+    body: JSON.stringify(params)
+  });
+}
+
+export function deleteKnowledgeBase(kbId: string) {
+  return request<void>(`/knowledge-base/${kbId}`, {
+    method: "DELETE"
+  });
+}
+
+export function fetchKnowledgeBaseDetail(kbId: string) {
+  return request<KnowledgeBase>(`/knowledge-base/${kbId}`);
+}
+
 export function fetchKnowledgeDocuments(kbId: string) {
   return request<PageResult<KnowledgeDocument>>(`/knowledge-base/${kbId}/docs?current=1&size=50`);
 }
@@ -187,12 +218,60 @@ export function deleteKnowledgeDocument(docId: string) {
   });
 }
 
+export function fetchKnowledgeDocumentDetail(docId: string) {
+  return request<KnowledgeDocument>(`/knowledge-base/docs/${docId}`);
+}
+
+export function updateKnowledgeDocument(
+  docId: string,
+  params: {
+    docName?: string;
+    enabled?: boolean;
+    scheduleEnabled?: boolean;
+    scheduleCron?: string;
+    chunkStrategy?: string;
+    chunkConfig?: string;
+  }
+) {
+  return request<void>(`/knowledge-base/docs/${docId}`, {
+    method: "PUT",
+    body: JSON.stringify(params)
+  });
+}
+
+export function fetchKnowledgeChunks(docId: string) {
+  return request<KnowledgeChunk[]>(`/knowledge-base/docs/${docId}/chunks`);
+}
+
+export function createKnowledgeChunk(docId: string, params: { content: string; index?: number | null; chunkId?: string }) {
+  return request<KnowledgeChunk>(`/knowledge-base/docs/${docId}/chunks`, {
+    method: "POST",
+    body: JSON.stringify(params)
+  });
+}
+
+export function updateKnowledgeChunk(docId: string, chunkId: string, params: { content: string }) {
+  return request<void>(`/knowledge-base/docs/${docId}/chunks/${chunkId}`, {
+    method: "PUT",
+    body: JSON.stringify(params)
+  });
+}
+
+export function deleteKnowledgeChunk(docId: string, chunkId: string) {
+  return request<void>(`/knowledge-base/docs/${docId}/chunks/${chunkId}`, {
+    method: "DELETE"
+  });
+}
+
 export function fetchConversations(userId: string) {
   return request<Conversation[]>(`/conversation?userId=${encodeURIComponent(userId)}`);
 }
 
 export type ChatHandlers = {
   onOpen?: () => void;
+  onTask?: (taskId: string) => void;
+  onCancelled?: (message: string) => void;
+  onThinking?: (text: string) => void;
   onToken: (text: string) => void;
   onError: (message: string) => void;
   onDone: () => void;
@@ -242,6 +321,7 @@ export async function streamChat(
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let doneTriggered = false;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -264,12 +344,31 @@ export async function streamChat(
         .trim();
       const text = extractSseText(dataLines.join("\n"));
 
+      if (eventName === "task") {
+        if (text) {
+          handlers.onTask?.(text);
+        }
+        continue;
+      }
+      if (eventName === "cancel") {
+        handlers.onCancelled?.(text || "当前聊天请求已取消");
+        continue;
+      }
+      if (eventName === "thinking") {
+        if (text) {
+          handlers.onThinking?.(text);
+        }
+        continue;
+      }
       if (eventName === "error") {
         handlers.onError(text || "服务端返回错误");
         continue;
       }
       if (eventName === "done" || dataLines.join("").trim() === "[DONE]") {
-        handlers.onDone();
+        if (!doneTriggered) {
+          doneTriggered = true;
+          handlers.onDone();
+        }
         continue;
       }
       if (eventName && eventName !== "message") {
@@ -281,5 +380,13 @@ export async function streamChat(
     }
   }
 
-  handlers.onDone();
+  if (!doneTriggered) {
+    handlers.onDone();
+  }
+}
+
+export function stopChatTask(taskId: string) {
+  return request<void>(`/rag/v1/stop?taskId=${encodeURIComponent(taskId)}`, {
+    method: "POST"
+  });
 }

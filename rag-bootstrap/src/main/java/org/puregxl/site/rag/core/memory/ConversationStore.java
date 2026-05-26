@@ -13,6 +13,7 @@ import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.infra.util.LLMResponseCleaner;
 import org.puregxl.site.rag.dao.entity.ConversationDO;
 import org.puregxl.site.rag.dao.mapper.ConversationMapper;
+import org.puregxl.site.rag.support.PromptTemplateLoader;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,10 +28,13 @@ public class ConversationStore implements ConversationStoreService {
 
     private static final int TITLE_MAX_LENGTH = 30;
     private static final int DESCRIPTION_MAX_LENGTH = 120;
+    private static final String TITLE_PROMPT_RESOURCE_PATH = "prompt/conversation-title-prompt.txt";
 
     private final ConversationMapper conversationMapper;
 
     private final LLMService llmService;
+
+    private final PromptTemplateLoader promptTemplateLoader;
 
     /**
      * 首次对话时保存会话元信息。
@@ -85,17 +89,8 @@ public class ConversationStore implements ConversationStoreService {
     }
 
     private String buildTitlePrompt(String content) {
-        return """
-                请根据用户的第一条问题生成会话标题和描述。
-                要求：
-                1. title 控制在 20 个中文字符以内。
-                2. description 控制在 60 个中文字符以内。
-                3. 只输出 JSON，不要输出 Markdown、代码块或额外解释。
-                4. JSON 格式：{"title":"...", "description":"..."}
-
-                用户问题：
-                %s
-                """.formatted(content);
+        return promptTemplateLoader.load(TITLE_PROMPT_RESOURCE_PATH)
+                .replace("{{question}}", content);
     }
 
     private ConversationTitle parseConversationTitle(String rawResult, String content) {

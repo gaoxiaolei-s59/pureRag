@@ -13,6 +13,7 @@ import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.infra.util.LLMResponseCleaner;
 import org.puregxl.site.rag.dao.entity.ConversationSummerDO;
 import org.puregxl.site.rag.dao.mapper.ConversationSummerMapper;
+import org.puregxl.site.rag.support.PromptTemplateLoader;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -21,12 +22,15 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 public class ConversationSummerStore implements ConversationSummerService {
+    private static final String SUMMARY_PROMPT_RESOURCE_PATH = "prompt/conversation-summary-prompt.txt";
 
     private final ConversationSummerMapper conversationSummerMapper;
 
     private final LLMService llmService;
 
     private final MemoryProperties memoryProperties;
+
+    private final PromptTemplateLoader promptTemplateLoader;
 
     /**
      * 加载用户历史上下文
@@ -81,20 +85,10 @@ public class ConversationSummerStore implements ConversationSummerService {
 
     private String generateSummary(String existingSummary, List<ChatMessage> historyMessages) {
         String historyText = buildHistoryText(historyMessages);
-        String prompt = """
-                请把下面的历史对话压缩成一段可继续对话使用的长期记忆摘要。
-                要求：
-                1. 保留用户偏好、事实约束、已经确认的结论、未完成事项。
-                2. 删除寒暄、重复表达和无关细节。
-                3. 摘要用中文，控制在 %d 字以内。
-                4. 只输出摘要正文，不要输出标题、列表编号或 Markdown 代码块。
-
-                已有摘要：
-                %s
-
-                本次新增历史：
-                %s
-                """.formatted(safeSummaryMaxChars(), StrUtil.blankToDefault(existingSummary, "无"), historyText);
+        String prompt = promptTemplateLoader.load(SUMMARY_PROMPT_RESOURCE_PATH)
+                .replace("{{summaryMaxChars}}", String.valueOf(safeSummaryMaxChars()))
+                .replace("{{existingSummary}}", StrUtil.blankToDefault(existingSummary, "无"))
+                .replace("{{history}}", historyText);
         String rawSummary = llmService.chat(ChatRequest.builder()
                 .messages(List.of(ChatMessage.user(prompt)))
                 .temperature(0.1D)

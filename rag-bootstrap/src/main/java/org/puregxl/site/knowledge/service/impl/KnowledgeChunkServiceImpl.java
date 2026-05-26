@@ -31,6 +31,19 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
 
     @Override
+    public java.util.List<KnowledgeChunkResponse> listKnowledgeChunks(String docId) {
+        getDocument(docId);
+        return knowledgeChunkMapper.selectList(Wrappers.lambdaQuery(KnowledgeChunkDO.class)
+                        .eq(KnowledgeChunkDO::getDocId, docId)
+                        .eq(KnowledgeChunkDO::getDeleted, 0)
+                        .orderByAsc(KnowledgeChunkDO::getChunkIndex)
+                        .orderByAsc(KnowledgeChunkDO::getCreateTime))
+                .stream()
+                .map(chunk -> BeanUtil.toBean(chunk, KnowledgeChunkResponse.class))
+                .toList();
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeChunkResponse createKnowledgeChunk(String docId, KnowledgeChunkCreateRequest request) {
         KnowledgeDocumentDO document = getDocument(docId);

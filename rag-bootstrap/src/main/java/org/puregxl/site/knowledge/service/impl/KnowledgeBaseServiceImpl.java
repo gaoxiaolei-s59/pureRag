@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -104,6 +105,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             throw new ClientException("知识库名称不能为空");
         }
 
+        if (!Objects.equals(knowledgeBaseDO.getCreatedBy(), UserContext.getUserContext().getUserId())) {
+            throw new ClientException("错误的修改");
+        }
+
         KnowledgeBaseDO build = KnowledgeBaseDO.builder()
                 .id(kbId)
                 .updatedBy(UserContext.getUserContext().getUserId())
@@ -131,6 +136,10 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             throw new ServiceException("知识库不存在");
         }
 
+        if (!Objects.equals(UserContext.getUserContext().getUserId(), knowledgeBaseDO.getCreatedBy())) {
+            throw new ServiceException("错误的删除");
+        }
+
 
         LambdaQueryWrapper<KnowledgeDocumentDO> knowledgeDocumentEq = Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
                 .eq(KnowledgeDocumentDO::getKbId, kbId);
@@ -139,6 +148,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         if (!knowledgeDocumentDOS.isEmpty()) {
             throw new ClientException("不能删除有文档的知识库");
         }
+
         knowledgeBaseDO.setDelFlag(1);
         knowledgeBaseDO.setUpdatedBy(UserContext.getUserContext().getUserId());
         knowledgeBaseMapper.updateById(knowledgeBaseDO);

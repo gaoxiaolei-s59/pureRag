@@ -21,6 +21,13 @@ public class KnowledgeChunkController {
 
     private final KnowledgeChunkService knowledgeChunkService;
 
+    /**
+     * 查询文档下 Chunk 列表
+     */
+    @GetMapping("/knowledge-base/docs/{doc-id}/chunks")
+    public Result<java.util.List<KnowledgeChunkResponse>> listKnowledgeChunks(@PathVariable("doc-id") String docId) {
+        return Results.success(knowledgeChunkService.listKnowledgeChunks(docId));
+    }
 
     /**
      * 新增 Chunk

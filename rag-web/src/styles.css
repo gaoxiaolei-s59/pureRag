@@ -669,6 +669,33 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.assistant-body {
+  max-width: min(78%, 780px);
+  display: grid;
+  gap: 12px;
+}
+
+.assistant-thinking {
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  color: #475569;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.92));
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assistant-thinking-label {
+  margin-bottom: 6px;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .turn-actions {
   display: flex;
   gap: 14px;
@@ -1668,6 +1695,42 @@ kbd {
 
 .assistant-text {
   color: #1f2937;
+}
+
+.assistant-thinking {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.94), rgba(248, 250, 252, 0.96));
+}
+
+.chunk-editor-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.chunk-editor-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.chunk-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chunk-editor-head strong {
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.chunk-editor-head small {
+  color: #64748b;
 }
 
 .turn-actions button {

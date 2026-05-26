@@ -4,7 +4,9 @@ import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 @SpringBootTest(classes = RagTestApplication.class)
 public class FileTest {
@@ -40,4 +42,7 @@ public class FileTest {
         }
         return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
     }
+
+
+
 }

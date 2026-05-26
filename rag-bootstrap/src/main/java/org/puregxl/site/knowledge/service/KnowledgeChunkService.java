@@ -7,6 +7,8 @@ import org.puregxl.site.knowledge.dto.response.KnowledgeChunkResponse;
 
 public interface KnowledgeChunkService {
 
+    java.util.List<KnowledgeChunkResponse> listKnowledgeChunks(String docId);
+
     KnowledgeChunkResponse createKnowledgeChunk(String docId, KnowledgeChunkCreateRequest request);
 
     void updateKnowledgeChunk(String docId, String chunkId, KnowledgeChunkUpdateRequest request);
