@@ -22,14 +22,14 @@ public class IntentTreeController {
 
     private final IntentTreeService intentTreeService;
 
-//    /**
-//     * 查询意向图
-//     * @return
-//     */
-//    @GetMapping("/intent-tree/query")
-//    public Result<List<IntentNodeResponse>> queryIntentNode() {
-//        return Results.success(intentTreeService.queryIntentNode());
-//    }
+    /**
+     * 查询意向图
+     * @return
+     */
+    @GetMapping("/intent-tree/query")
+    public Result<List<IntentNodeResponse>> queryIntentNode() {
+        return Results.success(intentTreeService.queryIntentNode());
+    }
 //
 //
 //    /**

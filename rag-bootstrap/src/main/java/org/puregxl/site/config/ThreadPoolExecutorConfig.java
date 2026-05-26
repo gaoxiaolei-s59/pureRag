@@ -19,6 +19,10 @@ public class ThreadPoolExecutorConfig {
      */
     public static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
 
+    /**
+     * 模型流失输出线程池
+     * @return
+     */
     @Bean
     public Executor modelStreamExecutor() {
         return new ThreadPoolExecutor(
@@ -34,6 +38,10 @@ public class ThreadPoolExecutorConfig {
         );
     }
 
+    /**
+     * 上下文加载数据库
+     * @return
+     */
     @Bean
     public Executor memoryLoadExecutor() {
         return new ThreadPoolExecutor(
@@ -49,4 +57,26 @@ public class ThreadPoolExecutorConfig {
         );
     }
 
+
+    /**
+     * 意图识别并行执行线程池
+     */
+    /**
+     * 上下文加载数据库
+     * @return
+     */
+    @Bean
+    public Executor intentRecognitionExecutor() {
+        return new ThreadPoolExecutor(
+                Math.max(2, CPU_COUNT / 2),
+                Math.max(4, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("model_stream_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+    }
 }
