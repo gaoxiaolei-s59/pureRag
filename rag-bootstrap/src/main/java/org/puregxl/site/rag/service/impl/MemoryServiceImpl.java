@@ -1,12 +1,19 @@
 package org.puregxl.site.rag.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.rag.core.memory.ConversationMemoryService;
 import org.puregxl.site.rag.core.memory.ConversationStore;
 import org.puregxl.site.rag.core.memory.ConversationSummerService;
+import org.puregxl.site.rag.dao.entity.MemoryDO;
+import org.puregxl.site.rag.dao.mapper.MemoryMapper;
+import org.puregxl.site.rag.dto.resp.MemoryQueryResponse;
 import org.puregxl.site.rag.service.MemoryService;
+import org.puregxl.site.user.context.UserContext;
+import org.puregxl.site.user.context.UserInfoDTO;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -27,6 +34,8 @@ public class MemoryServiceImpl implements MemoryService {
     private final Executor memoryLoadExecutor;
 
     private final ConversationStore conversationStore;
+
+    private final MemoryMapper memoryMapper;
 
     /**
      * 加载一次对话所需的记忆上下文。
@@ -91,6 +100,37 @@ public class MemoryServiceImpl implements MemoryService {
 
 
     /**
+     * 查询对应会话的聊天记录
+     * <p>
+     * 这里按“当前登录用户 + 会话 ID”查询完整历史，避免前端点击最近会话时只拿到未压缩窗口消息，
+     * 也避免跨用户读取到不属于当前账号的会话内容。
+     *
+     * @param conversionId
+     * @return
+     */
+    @Override
+    public List<MemoryQueryResponse> queryAllChatMessage(String conversionId) {
+        UserInfoDTO userContext = UserContext.getUserContext();
+        String userId = userContext == null ? null : userContext.getUserId();
+        if (StrUtil.hasBlank(conversionId, userId)) {
+            return List.of();
+        }
+        try {
+            return memoryMapper.selectList(Wrappers.lambdaQuery(MemoryDO.class)
+                            .eq(MemoryDO::getConversationId, conversionId)
+                            .eq(MemoryDO::getUserId, userId)
+                            .orderByAsc(MemoryDO::getCreateTime))
+                    .stream()
+                    .map(this::toMemoryQueryResponse)
+                    .toList();
+        } catch (Exception e) {
+            log.error("查询历史会话失败, conversationId:{}, userId:{}", conversionId, userId, e);
+            return List.of();
+        }
+    }
+
+
+    /**
      * 加载摘要上下文
      * @return
      */
@@ -147,5 +187,14 @@ public class MemoryServiceImpl implements MemoryService {
         }
     }
 
+    /**
+     * 将历史消息映射成前端最近会话详情页使用的轻量结构。
+     */
+    private MemoryQueryResponse toMemoryQueryResponse(MemoryDO memoryDO) {
+        MemoryQueryResponse response = new MemoryQueryResponse();
+        response.setRole(memoryDO.getRole());
+        response.setContent(memoryDO.getContent());
+        return response;
+    }
 
 }

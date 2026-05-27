@@ -43,13 +43,17 @@ import {
   deleteKnowledgeBase,
   deleteKnowledgeChunk,
   deleteKnowledgeDocument,
+  fetchConversationMessages,
   fetchConversations,
+  fetchIntentNodeDetail,
+  fetchIntentNodes,
   fetchKnowledgeBaseDetail,
   fetchKnowledgeBases,
   fetchKnowledgeChunks,
   fetchKnowledgeDocumentDetail,
   fetchKnowledgeDocuments,
   getStoredToken,
+  IntentNode,
   KnowledgeBase,
   KnowledgeChunk,
   KnowledgeDocument,
@@ -75,7 +79,8 @@ type ChatMessage = {
   thinkingDurationSeconds?: number;
 };
 
-type AppView = "login" | "chat" | "knowledge";
+type AppView = "login" | "chat" | "knowledge" | "intent";
+type IntentTreeNode = IntentNode & { treeChildren: IntentTreeNode[] };
 
 const DEFAULT_CHUNK_CONFIG = JSON.stringify({ chunkSize: 512, overlapSize: 128 }, null, 2);
 const USER_ID_KEY = "rag-web:user-id";
@@ -86,6 +91,14 @@ function createConversationId() {
 
 function createMessageId() {
   return crypto.randomUUID();
+}
+
+function toChatHistoryMessage(role: string, content: string): ChatMessage {
+  return {
+    id: createMessageId(),
+    role: role === "assistant" || role === "system" ? role : "user",
+    content
+  };
 }
 
 function formatBytes(value?: number) {
@@ -109,6 +122,52 @@ function statusText(status?: string) {
     success: "完成"
   };
   return status ? map[status] ?? status : "-";
+}
+
+function intentLevelText(level?: string) {
+  const map: Record<string, string> = {
+    DOMAIN: "领域",
+    CATEGORY: "分类",
+    TOPIC: "主题"
+  };
+  return level ? map[level] ?? level : "-";
+}
+
+function intentKindText(kind?: string) {
+  const map: Record<string, string> = {
+    KB: "知识库",
+    MCP: "MCP 工具",
+    SYSTEM: "系统能力"
+  };
+  return kind ? map[kind] ?? kind : "-";
+}
+
+function buildIntentTree(nodes: IntentNode[]) {
+  const nodeMap = new Map<string, IntentTreeNode>();
+  for (const node of nodes) {
+    nodeMap.set(node.id, { ...node, treeChildren: [] });
+  }
+  const roots: IntentTreeNode[] = [];
+  for (const node of nodeMap.values()) {
+    const parentId = node.parentId ?? "";
+    if (parentId && nodeMap.has(parentId)) {
+      nodeMap.get(parentId)?.treeChildren.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  const sortNodes = (items: IntentTreeNode[]) => {
+    items.sort((left, right) => {
+      const orderGap = (left.sortOrder ?? 0) - (right.sortOrder ?? 0);
+      if (orderGap !== 0) {
+        return orderGap;
+      }
+      return left.name.localeCompare(right.name, "zh-CN");
+    });
+    items.forEach((item) => sortNodes(item.treeChildren));
+  };
+  sortNodes(roots);
+  return roots;
 }
 
 export function App() {
@@ -153,6 +212,11 @@ export function App() {
   const [docFormChunkStrategy, setDocFormChunkStrategy] = useState("fixed_size");
   const [docFormChunkConfig, setDocFormChunkConfig] = useState(DEFAULT_CHUNK_CONFIG);
   const [newChunkContent, setNewChunkContent] = useState("");
+  const [intentNodes, setIntentNodes] = useState<IntentNode[]>([]);
+  const [intentLoading, setIntentLoading] = useState(false);
+  const [intentSearch, setIntentSearch] = useState("");
+  const [selectedIntentId, setSelectedIntentId] = useState("");
+  const [selectedIntentDetail, setSelectedIntentDetail] = useState<IntentNode | null>(null);
 
   const [conversationId, setConversationId] = useState(createConversationId());
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -229,6 +293,7 @@ export function App() {
   }, [bases, kbSearch]);
 
   const successDocs = documents.filter((item) => item.status === "success").length;
+  const enabledIntentCount = intentNodes.filter((item) => item.enabled === 1).length;
 
   const filteredConversations = useMemo(() => {
     const keyword = conversationSearch.trim().toLowerCase();
@@ -239,6 +304,22 @@ export function App() {
       `${item.title ?? ""} ${item.description ?? ""}`.toLowerCase().includes(keyword)
     );
   }, [conversationSearch, conversations]);
+
+  const filteredIntentNodes = useMemo(() => {
+    const keyword = intentSearch.trim().toLowerCase();
+    if (!keyword) {
+      return intentNodes;
+    }
+    return intentNodes.filter((item) =>
+      [item.name, item.id, item.description, item.fullPath, item.collectionName, item.kind, item.level]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword)
+    );
+  }, [intentNodes, intentSearch]);
+
+  const intentTree = useMemo(() => buildIntentTree(filteredIntentNodes), [filteredIntentNodes]);
 
   async function refreshBases() {
     if (!getStoredToken()) {
@@ -305,6 +386,45 @@ export function App() {
     }
   }
 
+  async function refreshIntentNodes(nextSelectedIntentId = selectedIntentId) {
+    setIntentLoading(true);
+    try {
+      const records = await fetchIntentNodes();
+      setIntentNodes(records ?? []);
+      const fallbackId = records?.[0]?.recordId ?? "";
+      const preferredId =
+        nextSelectedIntentId && (records ?? []).some((item) => item.recordId === nextSelectedIntentId)
+          ? nextSelectedIntentId
+          : fallbackId;
+      setSelectedIntentId(preferredId);
+      if (preferredId) {
+        const detail = await fetchIntentNodeDetail(preferredId);
+        setSelectedIntentDetail(detail);
+      } else {
+        setSelectedIntentDetail(null);
+      }
+      setNotice("意图列表已刷新");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "刷新意图列表失败");
+    } finally {
+      setIntentLoading(false);
+    }
+  }
+
+  async function handleSelectIntent(recordId: string) {
+    setSelectedIntentId(recordId);
+    setIntentLoading(true);
+    try {
+      const detail = await fetchIntentNodeDetail(recordId);
+      setSelectedIntentDetail(detail);
+      setNotice(`已加载意图节点：${detail.name}`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "加载意图详情失败");
+    } finally {
+      setIntentLoading(false);
+    }
+  }
+
   async function openDocumentDetail(docId: string) {
     setLoading(true);
     try {
@@ -368,6 +488,12 @@ export function App() {
     void refreshKnowledgeBaseDetail(selectedKbId);
   }, [selectedKbId]);
 
+  useEffect(() => {
+    if (token && appView === "intent") {
+      void refreshIntentNodes();
+    }
+  }, [appView, token]);
+
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
@@ -408,6 +534,9 @@ export function App() {
       setBases([]);
       setSelectedKbId("");
       setDocuments([]);
+      setIntentNodes([]);
+      setSelectedIntentId("");
+      setSelectedIntentDetail(null);
       setConversations([]);
       setUserId("");
       localStorage.removeItem(USER_ID_KEY);
@@ -429,14 +558,45 @@ export function App() {
     setNotice("已创建新对话");
   }
 
-  function handleSelectConversation(conversation: Conversation) {
-    void stopActiveChat(false);
+  function renderIntentTree(items: IntentTreeNode[], depth = 0): ReactNode {
+    if (!items.length) {
+      return null;
+    }
+    return items.map((item) => (
+      <div key={item.recordId} className="intent-tree-node">
+        <button
+          type="button"
+          className={`intent-tree-item ${selectedIntentId === item.recordId ? "active" : ""}`}
+          style={{ paddingLeft: `${16 + depth * 20}px` }}
+          onClick={() => void handleSelectIntent(item.recordId)}
+        >
+          <span className="intent-tree-main">
+            <strong>{item.name}</strong>
+            <small>
+              {intentLevelText(item.level)} · {intentKindText(item.kind)}
+            </small>
+          </span>
+          <span className="intent-tree-id">{item.id}</span>
+        </button>
+        {renderIntentTree(item.treeChildren, depth + 1)}
+      </div>
+    ));
+  }
+
+  async function handleSelectConversation(conversation: Conversation) {
+    await stopActiveChat(false);
     setConversationId(conversation.id);
-    setMessages([]);
     setQuestion("");
     setDeepThinking(conversation.deepThinking === 1);
     setChatLoading(false);
-    setNotice(`已切换到会话：${conversation.title || conversation.id}`);
+    try {
+      const historyMessages = await fetchConversationMessages(conversation.id);
+      setMessages((historyMessages ?? []).map((item) => toChatHistoryMessage(item.role, item.content)));
+      setNotice(`已切换到会话：${conversation.title || conversation.id}`);
+    } catch (error) {
+      setMessages([]);
+      setNotice(error instanceof Error ? error.message : "加载历史会话失败");
+    }
   }
 
   async function handleCreateKb(event: FormEvent) {
@@ -1068,16 +1228,16 @@ export function App() {
             <BarChart3 size={19} />
             Dashboard
           </button>
-          <button type="button" className="nav-item active">
+          <button type="button" className={`nav-item ${appView === "knowledge" ? "active" : ""}`} onClick={() => setAppView("knowledge")}>
             <Database size={19} />
             知识库管理
           </button>
-          <button type="button" className="nav-item">
+          <button type="button" className={`nav-item ${appView === "intent" ? "active" : ""}`} onClick={() => setAppView("intent")}>
             <Layers3 size={19} />
             意图管理
             <ChevronDown size={16} />
           </button>
-          <button type="button" className="nav-item sub">
+          <button type="button" className={`nav-item sub ${appView === "intent" ? "active" : ""}`} onClick={() => setAppView("intent")}>
             <ClipboardList size={18} />
             意图列表
           </button>
@@ -1107,7 +1267,11 @@ export function App() {
         <header className="admin-topbar">
           <label className="admin-search">
             <Search size={19} />
-            <input value={kbSearch} onChange={(event) => setKbSearch(event.target.value)} placeholder="筛选知识库..." />
+            <input
+              value={appView === "intent" ? intentSearch : kbSearch}
+              onChange={(event) => (appView === "intent" ? setIntentSearch(event.target.value) : setKbSearch(event.target.value))}
+              placeholder={appView === "intent" ? "筛选意图节点..." : "筛选知识库..."}
+            />
             <kbd>Ctrl K</kbd>
           </label>
           <div className="admin-top-actions">
@@ -1133,132 +1297,226 @@ export function App() {
         </header>
 
         <div className="admin-content">
-          <div className="breadcrumb">首页 / 知识库管理</div>
-          <div className="page-heading">
-            <div>
-              <h1>知识库管理</h1>
-              <p>管理所有知识库及其文档</p>
-            </div>
-            <div className="page-actions">
-              <button type="button" className="outline-button" onClick={() => void refreshBases()}>
-                <RefreshCw size={18} />
-                刷新
-              </button>
-              <button type="button" className="gradient-button" onClick={() => setCreateKbOpen(true)}>
-                <Plus size={18} />
-                新建知识库
-              </button>
-            </div>
-          </div>
-
-          <section className="stats-grid">
-            <StatCard icon={<Database size={24} />} label="知识库" value={bases.length} />
-            <StatCard icon={<FileText size={24} />} label="文档数" value={documents.length} />
-            <StatCard icon={<FolderOpen size={24} />} label="含文档知识库" value={bases.filter((item) => (item.documentCount ?? 0) > 0).length} />
-            <StatCard icon={<Layers3 size={24} />} label="完成文档" value={successDocs} />
-          </section>
-
-          {!kbDetailOpen ? (
-            <section className="admin-card knowledge-overview">
-              <div className="section-head">
-                <strong>知识库列表</strong>
-                <span>{filteredBases.length} 个</span>
-              </div>
-              <div className="knowledge-card-grid">
-                {filteredBases.length > 0 ? (
-                  filteredBases.map((kb) => (
-                    <button
-                      type="button"
-                      className="knowledge-card"
-                      key={kb.id}
-                      onClick={() => {
-                        setSelectedKbId(kb.id);
-                        setKbDetailOpen(true);
-                      }}
-                    >
-                      <span className="row-icon">
-                        <Database size={20} />
-                      </span>
-                      <span>
-                        <strong>{kb.name}</strong>
-                        <small>{kb.collectionName}</small>
-                      </span>
-                      <b>{kb.documentCount ?? 0}</b>
-                    </button>
-                  ))
-                ) : (
-                  <div className="empty-panel">暂无知识库，点击上方按钮创建</div>
-                )}
-              </div>
-            </section>
-          ) : (
-            <section className="admin-card knowledge-detail">
-              <div className="document-panel">
-                <div className="document-panel-head">
-                  <div>
-                    <span className="panel-eyebrow">当前知识库</span>
-                    <strong>{selectedKbDetail ? `${selectedKbDetail.name} 的文档` : "请选择知识库"}</strong>
-                    <small>{selectedKbDetail?.collectionName ?? "选择左侧知识库后查看和上传文档"}</small>
-                  </div>
-                  <div className="section-actions">
-                    <button type="button" className="outline-button small" onClick={() => setKbDetailOpen(false)}>
-                      <ArrowLeft size={15} />
-                      返回列表
-                    </button>
-                    <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
-                      <RefreshCw size={15} />
-                      刷新
-                    </button>
-                    <button type="button" className="outline-button small" disabled={!selectedKbDetail} onClick={() => setEditKbOpen(true)}>
-                      <Pencil size={15} />
-                      编辑知识库
-                    </button>
-                    <button type="button" className="outline-button small danger-text" disabled={!selectedKbDetail} onClick={() => void handleDeleteKb()}>
-                      <Trash2 size={15} />
-                      删除知识库
-                    </button>
-                    <button type="button" className="gradient-button small" disabled={!selectedKbId} onClick={() => setUploadOpen(true)}>
-                      <UploadCloud size={15} />
-                      上传文档
-                    </button>
-                  </div>
+          <div className="breadcrumb">首页 / {appView === "intent" ? "意图管理 / 意图列表" : "知识库管理"}</div>
+          {appView === "intent" ? (
+            <>
+              <div className="page-heading">
+                <div>
+                  <h1>意图列表</h1>
+                  <p>查看意图树节点结构，并加载单个节点详情</p>
                 </div>
+                <div className="page-actions">
+                  <button type="button" className="outline-button" onClick={() => void refreshIntentNodes()}>
+                    <RefreshCw size={18} className={intentLoading ? "spin" : ""} />
+                    刷新
+                  </button>
+                </div>
+              </div>
 
-                <div className="doc-table-wrap">
-                  <div className="doc-table">
-                    <div className="doc-row doc-head">
-                      <span>名称</span>
-                      <span>状态</span>
-                      <span>大小</span>
-                      <span>Chunk</span>
-                      <span>操作</span>
-                    </div>
-                    {documents.map((doc) => (
-                      <div className="doc-row" key={doc.id}>
-                        <span className="doc-title">{doc.docName}</span>
-                        <span>
-                          <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
-                        </span>
-                        <span>{formatBytes(doc.fileSize)}</span>
-                        <span>{doc.chunkCount ?? 0}</span>
-                        <span className="row-actions">
-                          <button type="button" onClick={() => void openDocumentDetail(doc.id)}>
-                            详情
-                          </button>
-                          <button type="button" onClick={() => void handleChunk(doc.id)}>
-                            分块
-                          </button>
-                          <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>
-                            删除
-                          </button>
-                        </span>
+              <section className="stats-grid">
+                <StatCard icon={<Layers3 size={24} />} label="意图节点" value={intentNodes.length} />
+                <StatCard icon={<CheckCircle2 size={24} />} label="启用节点" value={enabledIntentCount} />
+                <StatCard icon={<Database size={24} />} label="知识库节点" value={intentNodes.filter((item) => item.kind === "KB").length} />
+                <StatCard icon={<Sparkles size={24} />} label="根节点" value={intentNodes.filter((item) => !item.parentId).length} />
+              </section>
+
+              <section className="intent-layout">
+                <section className="admin-card knowledge-overview">
+                  <div className="section-head">
+                    <strong>意图树</strong>
+                    <span>{filteredIntentNodes.length} 个</span>
+                  </div>
+                  <div className="intent-tree-panel">
+                    {intentTree.length ? renderIntentTree(intentTree) : <div className="empty-panel">暂无意图节点</div>}
+                  </div>
+                </section>
+
+                <section className="admin-card knowledge-detail">
+                  <div className="document-panel">
+                    <div className="document-panel-head">
+                      <div>
+                        <span className="panel-eyebrow">节点详情</span>
+                        <strong>{selectedIntentDetail?.name ?? "请选择左侧意图节点"}</strong>
+                        <small>{selectedIntentDetail?.fullPath ?? "点击左侧节点后查看完整路径、描述与示例问题"}</small>
                       </div>
-                    ))}
-                    {!documents.length && <div className="empty-panel">暂无文档，上传后可进行分块</div>}
+                    </div>
+                    {selectedIntentDetail ? (
+                      <div className="intent-detail-grid">
+                        <div className="doc-table-wrap">
+                          <div className="intent-meta-grid">
+                            <IntentMeta label="业务 ID" value={selectedIntentDetail.id} />
+                            <IntentMeta label="数据库 ID" value={selectedIntentDetail.recordId} />
+                            <IntentMeta label="节点类型" value={intentKindText(selectedIntentDetail.kind)} />
+                            <IntentMeta label="节点层级" value={intentLevelText(selectedIntentDetail.level)} />
+                            <IntentMeta label="是否启用" value={selectedIntentDetail.enabled === 1 ? "启用" : "停用"} />
+                            <IntentMeta label="父节点" value={selectedIntentDetail.parentId || "-"} />
+                            <IntentMeta label="知识库 ID" value={selectedIntentDetail.kbId || "-"} />
+                            <IntentMeta label="Collection" value={selectedIntentDetail.collectionName || "-"} />
+                            <IntentMeta label="MCP 工具" value={selectedIntentDetail.mcpToolId || "-"} />
+                            <IntentMeta label="TopK" value={selectedIntentDetail.topK != null ? String(selectedIntentDetail.topK) : "-"} />
+                            <IntentMeta label="排序值" value={selectedIntentDetail.sortOrder != null ? String(selectedIntentDetail.sortOrder) : "-"} />
+                            <IntentMeta label="子节点数" value={String(selectedIntentDetail.children?.length ?? 0)} />
+                          </div>
+                        </div>
+                        <div className="doc-table-wrap">
+                          <div className="intent-detail-section">
+                            <strong>节点描述</strong>
+                            <p>{selectedIntentDetail.description || "暂无描述"}</p>
+                          </div>
+                        </div>
+                        <div className="doc-table-wrap">
+                          <div className="intent-detail-section">
+                            <strong>示例问题</strong>
+                            {selectedIntentDetail.examples?.length ? (
+                              <div className="intent-chip-list">
+                                {selectedIntentDetail.examples.map((example, index) => (
+                                  <span key={`${selectedIntentDetail.recordId}-example-${index}`} className="intent-chip">
+                                    {example}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>暂无示例问题</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="empty-panel">请选择左侧节点查看详情</div>
+                    )}
                   </div>
+                </section>
+              </section>
+            </>
+          ) : (
+            <>
+              <div className="page-heading">
+                <div>
+                  <h1>知识库管理</h1>
+                  <p>管理所有知识库及其文档</p>
+                </div>
+                <div className="page-actions">
+                  <button type="button" className="outline-button" onClick={() => void refreshBases()}>
+                    <RefreshCw size={18} />
+                    刷新
+                  </button>
+                  <button type="button" className="gradient-button" onClick={() => setCreateKbOpen(true)}>
+                    <Plus size={18} />
+                    新建知识库
+                  </button>
                 </div>
               </div>
-            </section>
+
+              <section className="stats-grid">
+                <StatCard icon={<Database size={24} />} label="知识库" value={bases.length} />
+                <StatCard icon={<FileText size={24} />} label="文档数" value={documents.length} />
+                <StatCard icon={<FolderOpen size={24} />} label="含文档知识库" value={bases.filter((item) => (item.documentCount ?? 0) > 0).length} />
+                <StatCard icon={<Layers3 size={24} />} label="完成文档" value={successDocs} />
+              </section>
+
+              {!kbDetailOpen ? (
+                <section className="admin-card knowledge-overview">
+                  <div className="section-head">
+                    <strong>知识库列表</strong>
+                    <span>{filteredBases.length} 个</span>
+                  </div>
+                  <div className="knowledge-card-grid">
+                    {filteredBases.length > 0 ? (
+                      filteredBases.map((kb) => (
+                        <button
+                          type="button"
+                          className="knowledge-card"
+                          key={kb.id}
+                          onClick={() => {
+                            setSelectedKbId(kb.id);
+                            setKbDetailOpen(true);
+                          }}
+                        >
+                          <span className="row-icon">
+                            <Database size={20} />
+                          </span>
+                          <span>
+                            <strong>{kb.name}</strong>
+                            <small>{kb.collectionName}</small>
+                          </span>
+                          <b>{kb.documentCount ?? 0}</b>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="empty-panel">暂无知识库，点击上方按钮创建</div>
+                    )}
+                  </div>
+                </section>
+              ) : (
+                <section className="admin-card knowledge-detail">
+                  <div className="document-panel">
+                    <div className="document-panel-head">
+                      <div>
+                        <span className="panel-eyebrow">当前知识库</span>
+                        <strong>{selectedKbDetail ? `${selectedKbDetail.name} 的文档` : "请选择知识库"}</strong>
+                        <small>{selectedKbDetail?.collectionName ?? "选择左侧知识库后查看和上传文档"}</small>
+                      </div>
+                      <div className="section-actions">
+                        <button type="button" className="outline-button small" onClick={() => setKbDetailOpen(false)}>
+                          <ArrowLeft size={15} />
+                          返回列表
+                        </button>
+                        <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
+                          <RefreshCw size={15} />
+                          刷新
+                        </button>
+                        <button type="button" className="outline-button small" disabled={!selectedKbDetail} onClick={() => setEditKbOpen(true)}>
+                          <Pencil size={15} />
+                          编辑知识库
+                        </button>
+                        <button type="button" className="outline-button small danger-text" disabled={!selectedKbDetail} onClick={() => void handleDeleteKb()}>
+                          <Trash2 size={15} />
+                          删除知识库
+                        </button>
+                        <button type="button" className="gradient-button small" disabled={!selectedKbId} onClick={() => setUploadOpen(true)}>
+                          <UploadCloud size={15} />
+                          上传文档
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="doc-table-wrap">
+                      <div className="doc-table">
+                        <div className="doc-row doc-head">
+                          <span>名称</span>
+                          <span>状态</span>
+                          <span>大小</span>
+                          <span>Chunk</span>
+                          <span>操作</span>
+                        </div>
+                        {documents.map((doc) => (
+                          <div className="doc-row" key={doc.id}>
+                            <span className="doc-title">{doc.docName}</span>
+                            <span>
+                              <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
+                            </span>
+                            <span>{formatBytes(doc.fileSize)}</span>
+                            <span>{doc.chunkCount ?? 0}</span>
+                            <span className="row-actions">
+                              <button type="button" onClick={() => void openDocumentDetail(doc.id)}>
+                                详情
+                              </button>
+                              <button type="button" onClick={() => void handleChunk(doc.id)}>
+                                分块
+                              </button>
+                              <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>
+                                删除
+                              </button>
+                            </span>
+                          </div>
+                        ))}
+                        {!documents.length && <div className="empty-panel">暂无文档，上传后可进行分块</div>}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+            </>
           )}
 
           <p className="admin-inline-notice">{notice}</p>
@@ -1522,6 +1780,15 @@ function StatCard({ icon, label, value }: { icon: ReactNode; label: string; valu
         <strong>{value}</strong>
       </div>
       <em>全部</em>
+    </div>
+  );
+}
+
+function IntentMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="intent-meta-item">
+      <small>{label}</small>
+      <strong>{value}</strong>
     </div>
   );
 }

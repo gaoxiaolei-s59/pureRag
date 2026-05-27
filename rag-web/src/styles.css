@@ -1273,6 +1273,136 @@ kbd {
   transform: translateY(-1px);
 }
 
+.intent-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.intent-tree-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.intent-tree-node {
+  display: grid;
+  gap: 8px;
+}
+
+.intent-tree-item {
+  width: 100%;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #e4ebf5;
+  border-radius: 10px;
+  background: #fbfcff;
+  text-align: left;
+  padding: 14px 16px;
+}
+
+.intent-tree-item:hover {
+  border-color: #7c8df8;
+  background: #f7faff;
+}
+
+.intent-tree-item.active {
+  border-color: rgba(37, 99, 235, 0.26);
+  background: linear-gradient(90deg, #eef4ff, #f9fbff);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.08);
+}
+
+.intent-tree-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.intent-tree-main strong {
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.intent-tree-main small,
+.intent-tree-id {
+  color: #75839a;
+  font-size: 12px;
+}
+
+.intent-tree-id {
+  max-width: 180px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.intent-detail-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.intent-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.intent-meta-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fbff;
+  border: 1px solid #e6edf7;
+}
+
+.intent-meta-item small {
+  color: #7b89a0;
+}
+
+.intent-meta-item strong {
+  color: #1f2937;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.intent-detail-section {
+  display: grid;
+  gap: 10px;
+}
+
+.intent-detail-section strong {
+  color: #1f2937;
+  font-size: 15px;
+}
+
+.intent-detail-section p {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.intent-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.intent-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #315df4;
+  background: #eef3ff;
+  border: 1px solid #dce7ff;
+  font-size: 13px;
+}
+
 .row-icon {
   width: 42px;
   height: 42px;
@@ -1915,7 +2045,8 @@ kbd {
   }
 
   .knowledge-card-grid,
-  .stats-grid {
+  .stats-grid,
+  .intent-layout {
     grid-template-columns: 1fr;
   }
 }

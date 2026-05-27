@@ -1,10 +1,19 @@
 package org.puregxl.site.rag.service;
 
 import org.puregxl.site.infra.framework.convention.ChatMessage;
+import org.puregxl.site.rag.dto.resp.MemoryQueryResponse;
 
 import java.util.List;
 
 public interface MemoryService {
+
+    /**
+     * 记载会话记忆
+     * @param userId
+     * @param conversationId
+     * @param user
+     * @return
+     */
     List<ChatMessage> loadMemory(String userId, String conversationId, ChatMessage user);
 
     /**
@@ -18,4 +27,6 @@ public interface MemoryService {
      * @param assistantMessage 助手回复
      */
     void saveConversationTurn(String userId, String conversationId, ChatMessage userMessage, ChatMessage assistantMessage);
+
+    List<MemoryQueryResponse> queryAllChatMessage(String conversionId);
 }

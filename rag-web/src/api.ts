@@ -79,6 +79,33 @@ export type Conversation = {
   pinned?: number;
 };
 
+export type MemoryQueryMessage = {
+  role: "user" | "assistant" | "system" | string;
+  content: string;
+};
+
+export type IntentNode = {
+  recordId: string;
+  id: string;
+  kbId?: string;
+  name: string;
+  description?: string;
+  examples?: string[];
+  level?: "DOMAIN" | "CATEGORY" | "TOPIC" | string;
+  parentId?: string | null;
+  collectionName?: string;
+  mcpToolId?: string;
+  kind?: "KB" | "MCP" | "SYSTEM" | string;
+  topK?: number;
+  sortOrder?: number;
+  enabled?: number;
+  promptSnippet?: string;
+  promptTemplate?: string;
+  paramPromptTemplate?: string;
+  fullPath?: string;
+  children?: string[];
+};
+
 export type UploadDocumentParams = {
   kbId: string;
   sourceType: "file" | "url";
@@ -271,6 +298,18 @@ export function deleteKnowledgeChunk(docId: string, chunkId: string) {
 
 export function fetchConversations(userId: string) {
   return request<Conversation[]>(`/conversation?userId=${encodeURIComponent(userId)}`);
+}
+
+export function fetchConversationMessages(conversationId: string) {
+  return request<MemoryQueryMessage[]>(`/memory/v1/query?conversionId=${encodeURIComponent(conversationId)}`);
+}
+
+export function fetchIntentNodes() {
+  return request<IntentNode[]>("/intent-tree/query");
+}
+
+export function fetchIntentNodeDetail(id: string) {
+  return request<IntentNode>(`/intent-tree/${encodeURIComponent(id)}`);
 }
 
 export type ChatHandlers = {
