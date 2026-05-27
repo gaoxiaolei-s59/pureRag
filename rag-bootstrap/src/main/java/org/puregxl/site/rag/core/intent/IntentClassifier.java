@@ -16,4 +16,5 @@ public interface IntentClassifier {
      * 返回结果应按分数从高到低排序，供上层继续做阈值过滤和总量裁剪。
      */
     List<NodeScore> classifiy(String question);
+
 }

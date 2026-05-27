@@ -12,6 +12,12 @@ import java.util.List;
 @Builder
 public class IntentNode {
     /**
+     * 数据库主键。
+     * CRUD 场景需要使用该字段作为更新/删除定位键，避免和业务 intentCode 混用。
+     */
+    private String recordId;
+
+    /**
      * 唯一标识，如：
      * - "group" / "group-hr" / "biz-oa-intro" / "middleware-redis"
      */

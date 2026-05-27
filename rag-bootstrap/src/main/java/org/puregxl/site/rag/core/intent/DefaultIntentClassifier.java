@@ -90,6 +90,8 @@ public class DefaultIntentClassifier implements IntentClassifier{
         }
     }
 
+
+
     /**
      * 把数据库中的平铺记录转换成内存节点，并补齐树关系和全路径。
      * parent/child 关系仍使用 intentCode 作为业务主键，保证缓存和前端展示保持稳定。
@@ -105,6 +107,7 @@ public class DefaultIntentClassifier implements IntentClassifier{
         Map<String, IntentNode> nodeById = new LinkedHashMap<>();
         for (IntentNodeDO nodeDO : sortedNodes) {
             IntentNode node = IntentNode.builder()
+                    .recordId(nodeDO.getId())
                     .id(nodeDO.getIntentCode())
                     .kbId(nodeDO.getKbId())
                     .name(nodeDO.getName())
