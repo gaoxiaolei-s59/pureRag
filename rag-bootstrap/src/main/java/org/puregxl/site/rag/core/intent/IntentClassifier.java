@@ -10,4 +10,10 @@ public interface IntentClassifier {
      * 调用方只关心最终可直接使用的意图节点列表。
      */
     List<IntentNode> queryIntentNodes();
+
+    /**
+     * 根据用户问题对候选意图节点打分。
+     * 返回结果应按分数从高到低排序，供上层继续做阈值过滤和总量裁剪。
+     */
+    List<NodeScore> classifiy(String question);
 }

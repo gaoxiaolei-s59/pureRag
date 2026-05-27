@@ -8,6 +8,7 @@
     <artifactId>RagTest</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
+
     <modules>
         <module>rag-bootstrap</module>
         <module>rag-mcp</module>

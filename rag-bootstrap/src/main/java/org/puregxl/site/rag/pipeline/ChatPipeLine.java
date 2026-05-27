@@ -5,6 +5,8 @@ import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.rag.config.RAGDefaultProperties;
+import org.puregxl.site.rag.core.intent.IntentResolver;
+import org.puregxl.site.rag.core.intent.SubQuestionIntent;
 import org.puregxl.site.rag.core.rewrite.QueryRewriteService;
 import org.puregxl.site.rag.core.rewrite.RewriteResult;
 import org.puregxl.site.rag.retrieval.RagRetrievalService;
@@ -40,6 +42,7 @@ public class ChatPipeLine {
     private final MemoryService memoryService;
     private final QueryRewriteService queryRewriteService;
     private final PromptTemplateLoader promptTemplateLoader;
+    private final IntentResolver intentResolver;
 
     /**
      * 执行一次基础 RAG 流式问答。
@@ -103,6 +106,17 @@ public class ChatPipeLine {
                 .build();
     }
 
+
+    /**
+     * 进行意图识别
+     *
+     * @param context
+     */
+    public void resolveIntents(StreamChatContext context) {
+        List<SubQuestionIntent> subQuestionIntents = intentResolver.resolve(context.getRewriteResult());
+    }
+
+
     /**
      * 实现用户的问题改写
      */
@@ -113,6 +127,7 @@ public class ChatPipeLine {
 
     /**
      * 抽取最近的几轮对话
+     *
      * @param history
      * @return
      */
