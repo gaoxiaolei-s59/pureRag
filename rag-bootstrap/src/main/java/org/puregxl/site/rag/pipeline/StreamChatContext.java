@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.Setter;
 import org.puregxl.site.infra.chat.StreamCallback;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
+import org.puregxl.site.rag.core.intent.SubQuestionIntent;
 import org.puregxl.site.rag.core.rewrite.MutiQueryRewriteService;
 import org.puregxl.site.rag.core.rewrite.RewriteResult;
 
@@ -26,4 +27,8 @@ public class StreamChatContext {
 
     @Setter
     private RewriteResult rewriteResult;
+
+
+    @Setter
+    private List<SubQuestionIntent> subIntents;
 }

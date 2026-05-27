@@ -33,7 +33,7 @@ public class IntentResolver {
 
 
     /**
-     * 调用大模型实现字问题的打分
+     * 调用大模型实现子问题的打分
      *
      * @param rewriteResult
      * @return

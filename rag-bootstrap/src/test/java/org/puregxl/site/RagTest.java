@@ -5,8 +5,10 @@ import org.puregxl.site.infra.chat.LLMService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 public class RagTest {
     @Autowired
     public LLMService llmService;

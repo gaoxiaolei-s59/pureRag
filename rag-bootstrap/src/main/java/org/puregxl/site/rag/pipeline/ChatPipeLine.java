@@ -65,9 +65,20 @@ public class ChatPipeLine {
         // 2.基于最近 4 轮用户/助手对话做问题改写，避免把摘要系统消息一并喂给改写模型。
         Rewrite(context.getQuestion(), latestRewriteHistory(memoryMessages), context);
 
+        // 3.多路并行检索子问题
+        resolveIntents(context);
+
+        StreamCancellationHandle systemOnlyHandle = handleSystemOnly(context, memoryMessages);
+        if (systemOnlyHandle != null) {
+            return systemOnlyHandle;
+        }
+
         String question = context.getQuestion().trim();
         String retrievalQuestion = resolveRetrievalQuestion(context, question);
+
         List<Float> queryEmbedding = embeddingService.embed(retrievalQuestion);
+
+
         List<RetrievedChunk> candidates = retrievalService.searchSimilarChunks(
                 ragDefaultProperties.getCollectionName(),
                 queryEmbedding,
@@ -106,6 +117,50 @@ public class ChatPipeLine {
                 .build();
     }
 
+    /**
+     * 构建不依赖知识库检索的直连模型请求。
+     * <p>
+     * 当所有子问题都被判定为 SYSTEM 意图时，说明本轮问题更像通用聊天/写作/解释，不需要走知识库召回。
+     * 这时只保留对话记忆和当前用户问题，避免把“知识库未命中”的系统提示词误传给模型。
+     */
+    private ChatRequest buildDirectChatRequest(String question, List<ChatMessage> memoryMessages, boolean deepThinking) {
+        List<ChatMessage> messages = new ArrayList<>();
+        if (CollUtil.isNotEmpty(memoryMessages)) {
+            messages.addAll(memoryMessages);
+        }
+        messages.add(ChatMessage.user(question));
+        return ChatRequest.builder()
+                .messages(messages)
+                .thinking(deepThinking)
+                .temperature(DEFAULT_TEMPERATURE)
+                .topP(DEFAULT_TOP_P)
+                .build();
+    }
+
+
+    /**
+     * 判断是否所有的子节点命中的意图都为System
+     * @return
+     */
+    private StreamCancellationHandle handleSystemOnly(StreamChatContext context, List<ChatMessage> memoryMessages) {
+        List<SubQuestionIntent> subIntents = context.getSubIntents();
+        if (CollUtil.isEmpty(subIntents)) {
+            return null;
+        }
+
+        boolean allSystemOnly = subIntents.stream()
+                .allMatch(subIntent -> subIntent != null && intentResolver.isSystemOnly(subIntent.getNodeScores()));
+        if (!allSystemOnly) {
+            return null;
+        }
+
+        String question = context.getQuestion().trim();
+        ChatRequest request = buildDirectChatRequest(question, memoryMessages, context.isDeepThinking());
+        log.info("[RAG问答] 命中纯 SYSTEM 意图，跳过检索直连模型，taskId={}, conversationId={}, subQuestionCount={}",
+                context.getTaskId(), context.getConversationId(), subIntents.size());
+        return llmService.streamChat(request, context.getCallback());
+    }
+
 
     /**
      * 进行意图识别
@@ -114,6 +169,7 @@ public class ChatPipeLine {
      */
     public void resolveIntents(StreamChatContext context) {
         List<SubQuestionIntent> subQuestionIntents = intentResolver.resolve(context.getRewriteResult());
+        context.setSubIntents(subQuestionIntents);
     }
 
 

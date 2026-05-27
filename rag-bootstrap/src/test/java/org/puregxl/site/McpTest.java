@@ -15,6 +15,9 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.stream.Collectors;
@@ -29,8 +32,9 @@ public class McpTest {
 
     @Test
     void queryUserResumeByMcpToolCalling() {
-        String apiKey = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+        String apiKey = apiKey();
         Assumptions.assumeTrue(hasText(apiKey), "请通过 -Dspring.ai.demo.api-key=你的Key 或环境变量 SILICONFLOW_API_KEY 配置 API Key");
+        Assumptions.assumeTrue(mcpServerAvailable(), "本地 MCP SSE 服务未启动，跳过联调用例");
 
         HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(property("mcp.server.base-url", DEFAULT_MCP_SERVER_BASE_URL))
                 .sseEndpoint(property("mcp.server.sse-endpoint", DEFAULT_MCP_SSE_ENDPOINT))
@@ -169,5 +173,29 @@ public class McpTest {
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    /**
+     * 联调测试依赖本地启动的 MCP SSE 服务。这里先做一次轻量探测，避免服务没启动时在 initialize() 阶段白等 30 秒。
+     */
+    private static boolean mcpServerAvailable() {
+        HttpURLConnection connection = null;
+        try {
+            URI uri = URI.create(property("mcp.server.base-url", DEFAULT_MCP_SERVER_BASE_URL)
+                    + property("mcp.server.sse-endpoint", DEFAULT_MCP_SSE_ENDPOINT));
+            connection = (HttpURLConnection) uri.toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout((int) Duration.ofSeconds(2).toMillis());
+            connection.setReadTimeout((int) Duration.ofSeconds(2).toMillis());
+            connection.connect();
+            int status = connection.getResponseCode();
+            return status < 500;
+        } catch (IOException ex) {
+            return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 }

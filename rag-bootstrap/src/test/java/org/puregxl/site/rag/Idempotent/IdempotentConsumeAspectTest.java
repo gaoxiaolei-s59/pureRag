@@ -8,6 +8,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -109,7 +110,11 @@ class IdempotentConsumeAspectTest {
         when(signature.getParameterNames()).thenReturn(new String[]{"message"});
         when(joinPoint.proceed()).thenAnswer(invocation -> {
             proceedCount.incrementAndGet();
-            return method.invoke(this, args);
+            try {
+                return method.invoke(this, args);
+            } catch (InvocationTargetException ex) {
+                throw ex.getTargetException();
+            }
         });
         return joinPoint;
     }
