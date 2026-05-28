@@ -43,8 +43,10 @@ import {
   deleteKnowledgeBase,
   deleteKnowledgeChunk,
   deleteKnowledgeDocument,
+  deleteIntentNode,
   fetchConversationMessages,
   fetchConversations,
+  createIntentNode,
   fetchIntentNodeDetail,
   fetchIntentNodes,
   fetchKnowledgeBaseDetail,
@@ -63,6 +65,7 @@ import {
   startDocumentChunk,
   stopChatTask,
   streamChat,
+  updateIntentNode,
   updateKnowledgeBase,
   updateKnowledgeChunk,
   updateKnowledgeDocument,
@@ -79,8 +82,28 @@ type ChatMessage = {
   thinkingDurationSeconds?: number;
 };
 
-type AppView = "login" | "chat" | "knowledge" | "intent";
+type AppView = "login" | "chat" | "knowledge" | "knowledge-docs" | "intent-tree" | "intent-list";
 type IntentTreeNode = IntentNode & { treeChildren: IntentTreeNode[] };
+type IntentFormMode = "create-root" | "create-child" | "edit";
+type IntentFormState = {
+  recordId?: string;
+  kbId: string;
+  intentCode: string;
+  name: string;
+  level: number;
+  parentCode: string;
+  description: string;
+  examplesText: string;
+  collectionName: string;
+  mcpToolId: string;
+  topK: string;
+  kind: number;
+  sortOrder: string;
+  enabled: boolean;
+  promptSnippet: string;
+  promptTemplate: string;
+  paramPromptTemplate: string;
+};
 
 const DEFAULT_CHUNK_CONFIG = JSON.stringify({ chunkSize: 512, overlapSize: 128 }, null, 2);
 const USER_ID_KEY = "rag-web:user-id";
@@ -112,6 +135,24 @@ function formatBytes(value?: number) {
     return `${(value / 1024).toFixed(1)} KB`;
   }
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDateTime(value?: string) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(date);
 }
 
 function statusText(status?: string) {
@@ -170,6 +211,47 @@ function buildIntentTree(nodes: IntentNode[]) {
   return roots;
 }
 
+function levelCodeFromValue(level?: string) {
+  if (level === "CATEGORY") {
+    return 1;
+  }
+  if (level === "TOPIC") {
+    return 2;
+  }
+  return 0;
+}
+
+function kindCodeFromValue(kind?: string) {
+  if (kind === "MCP") {
+    return 1;
+  }
+  if (kind === "SYSTEM") {
+    return 2;
+  }
+  return 0;
+}
+
+function createEmptyIntentForm(): IntentFormState {
+  return {
+    kbId: "",
+    intentCode: "",
+    name: "",
+    level: 0,
+    parentCode: "",
+    description: "",
+    examplesText: "",
+    collectionName: "",
+    mcpToolId: "",
+    topK: "",
+    kind: 0,
+    sortOrder: "0",
+    enabled: true,
+    promptSnippet: "",
+    promptTemplate: "",
+    paramPromptTemplate: ""
+  };
+}
+
 export function App() {
   const [token, setToken] = useState(getStoredToken());
   const [appView, setAppView] = useState<AppView>(token ? "chat" : "login");
@@ -190,6 +272,8 @@ export function App() {
   const [selectedDocDetail, setSelectedDocDetail] = useState<KnowledgeDocument | null>(null);
   const [docChunks, setDocChunks] = useState<KnowledgeChunk[]>([]);
   const [kbSearch, setKbSearch] = useState("");
+  const [docSearch, setDocSearch] = useState("");
+  const [docStatusFilter, setDocStatusFilter] = useState("all");
   const [editKbOpen, setEditKbOpen] = useState(false);
   const [docDetailOpen, setDocDetailOpen] = useState(false);
 
@@ -215,8 +299,15 @@ export function App() {
   const [intentNodes, setIntentNodes] = useState<IntentNode[]>([]);
   const [intentLoading, setIntentLoading] = useState(false);
   const [intentSearch, setIntentSearch] = useState("");
+  const [intentLevelFilter, setIntentLevelFilter] = useState("all");
+  const [intentKindFilter, setIntentKindFilter] = useState("all");
+  const [intentStatusFilter, setIntentStatusFilter] = useState("all");
+  const [intentParentFilter, setIntentParentFilter] = useState("all");
   const [selectedIntentId, setSelectedIntentId] = useState("");
   const [selectedIntentDetail, setSelectedIntentDetail] = useState<IntentNode | null>(null);
+  const [intentFormOpen, setIntentFormOpen] = useState(false);
+  const [intentFormMode, setIntentFormMode] = useState<IntentFormMode>("create-root");
+  const [intentForm, setIntentForm] = useState<IntentFormState>(createEmptyIntentForm());
 
   const [conversationId, setConversationId] = useState(createConversationId());
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -307,19 +398,42 @@ export function App() {
 
   const filteredIntentNodes = useMemo(() => {
     const keyword = intentSearch.trim().toLowerCase();
-    if (!keyword) {
-      return intentNodes;
-    }
-    return intentNodes.filter((item) =>
-      [item.name, item.id, item.description, item.fullPath, item.collectionName, item.kind, item.level]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(keyword)
-    );
-  }, [intentNodes, intentSearch]);
+    return intentNodes.filter((item) => {
+      const matchesKeyword =
+        !keyword ||
+        [item.name, item.id, item.description, item.fullPath, item.collectionName, item.kind, item.level]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(keyword);
+      const matchesLevel = intentLevelFilter === "all" || item.level === intentLevelFilter;
+      const matchesKind = intentKindFilter === "all" || item.kind === intentKindFilter;
+      const matchesStatus =
+        intentStatusFilter === "all" ||
+        (intentStatusFilter === "enabled" ? item.enabled === 1 : item.enabled !== 1);
+      const matchesParent =
+        intentParentFilter === "all" ||
+        (intentParentFilter === "ROOT" ? !item.parentId : item.parentId === intentParentFilter);
+      return matchesKeyword && matchesLevel && matchesKind && matchesStatus && matchesParent;
+    });
+  }, [intentKindFilter, intentLevelFilter, intentNodes, intentParentFilter, intentSearch, intentStatusFilter]);
 
   const intentTree = useMemo(() => buildIntentTree(filteredIntentNodes), [filteredIntentNodes]);
+  const filteredDocuments = useMemo(() => {
+    const keyword = docSearch.trim().toLowerCase();
+    return documents.filter((item) => {
+      const matchesKeyword =
+        !keyword ||
+        `${item.docName} ${item.sourceLocation ?? ""} ${item.fileType ?? ""}`.toLowerCase().includes(keyword);
+      const matchesStatus = docStatusFilter === "all" || (item.status ?? "unknown") === docStatusFilter;
+      return matchesKeyword && matchesStatus;
+    });
+  }, [docSearch, docStatusFilter, documents]);
+  const intentParentOptions = useMemo(() => {
+    return intentNodes
+      .filter((item) => !item.parentId)
+      .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+  }, [intentNodes]);
 
   async function refreshBases() {
     if (!getStoredToken()) {
@@ -411,6 +525,109 @@ export function App() {
     }
   }
 
+  function openCreateRootIntent() {
+    setIntentFormMode("create-root");
+    setIntentForm(createEmptyIntentForm());
+    setIntentFormOpen(true);
+  }
+
+  function openCreateChildIntent(parent: IntentNode) {
+    setIntentFormMode("create-child");
+    setIntentForm({
+      ...createEmptyIntentForm(),
+      parentCode: parent.id,
+      level: Math.min(levelCodeFromValue(parent.level) + 1, 2)
+    });
+    setIntentFormOpen(true);
+  }
+
+  function openEditIntent(node: IntentNode) {
+    setIntentFormMode("edit");
+    setIntentForm({
+      recordId: node.recordId,
+      kbId: node.kbId ?? "",
+      intentCode: node.id,
+      name: node.name,
+      level: levelCodeFromValue(node.level),
+      parentCode: node.parentId ?? "",
+      description: node.description ?? "",
+      examplesText: (node.examples ?? []).join("\n"),
+      collectionName: node.collectionName ?? "",
+      mcpToolId: node.mcpToolId ?? "",
+      topK: node.topK != null ? String(node.topK) : "",
+      kind: kindCodeFromValue(node.kind),
+      sortOrder: node.sortOrder != null ? String(node.sortOrder) : "0",
+      enabled: node.enabled === 1,
+      promptSnippet: node.promptSnippet ?? "",
+      promptTemplate: node.promptTemplate ?? "",
+      paramPromptTemplate: node.paramPromptTemplate ?? ""
+    });
+    setIntentFormOpen(true);
+  }
+
+  async function handleDeleteIntentNode() {
+    if (!selectedIntentDetail?.recordId) {
+      return;
+    }
+    setIntentLoading(true);
+    try {
+      await deleteIntentNode(selectedIntentDetail.recordId);
+      setNotice(`已删除节点：${selectedIntentDetail.name}`);
+      setSelectedIntentDetail(null);
+      setSelectedIntentId("");
+      await refreshIntentNodes();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "删除意图节点失败");
+    } finally {
+      setIntentLoading(false);
+    }
+  }
+
+  async function handleIntentFormSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!intentForm.name.trim() || !intentForm.intentCode.trim()) {
+      setNotice("请填写节点名称和意图标识");
+      return;
+    }
+    setIntentLoading(true);
+    try {
+      const payload = {
+        kbId: intentForm.kbId || undefined,
+        intentCode: intentForm.intentCode.trim(),
+        name: intentForm.name.trim(),
+        level: intentForm.level,
+        parentCode: intentForm.parentCode || undefined,
+        description: intentForm.description.trim() || undefined,
+        examples: intentForm.examplesText
+          .split("\n")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        collectionName: intentForm.collectionName.trim() || undefined,
+        mcpToolId: intentForm.mcpToolId.trim() || undefined,
+        topK: intentForm.topK.trim() ? Number(intentForm.topK) : null,
+        kind: intentForm.kind,
+        sortOrder: intentForm.sortOrder.trim() ? Number(intentForm.sortOrder) : 0,
+        enabled: intentForm.enabled ? 1 : 0,
+        promptSnippet: intentForm.promptSnippet.trim() || undefined,
+        promptTemplate: intentForm.promptTemplate.trim() || undefined,
+        paramPromptTemplate: intentForm.paramPromptTemplate.trim() || undefined
+      };
+      if (intentFormMode === "edit" && intentForm.recordId) {
+        await updateIntentNode(intentForm.recordId, payload);
+        setNotice(`已更新节点：${payload.name}`);
+      } else {
+        await createIntentNode(payload);
+        setNotice(`已创建节点：${payload.name}`);
+      }
+      setIntentFormOpen(false);
+      await refreshIntentNodes(intentForm.recordId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "保存意图节点失败");
+    } finally {
+      setIntentLoading(false);
+    }
+  }
+
   async function handleSelectIntent(recordId: string) {
     setSelectedIntentId(recordId);
     setIntentLoading(true);
@@ -489,7 +706,7 @@ export function App() {
   }, [selectedKbId]);
 
   useEffect(() => {
-    if (token && appView === "intent") {
+    if (token && (appView === "intent-tree" || appView === "intent-list")) {
       void refreshIntentNodes();
     }
   }, [appView, token]);
@@ -567,14 +784,18 @@ export function App() {
         <button
           type="button"
           className={`intent-tree-item ${selectedIntentId === item.recordId ? "active" : ""}`}
-          style={{ paddingLeft: `${16 + depth * 20}px` }}
+          style={{ marginLeft: `${depth * 24}px` }}
           onClick={() => void handleSelectIntent(item.recordId)}
         >
+          <span className="intent-tree-leading">
+            {item.treeChildren.length ? <ChevronDown size={16} /> : <span className="intent-tree-dot" />}
+          </span>
           <span className="intent-tree-main">
             <strong>{item.name}</strong>
-            <small>
-              {intentLevelText(item.level)} · {intentKindText(item.kind)}
-            </small>
+            <span className="intent-tree-badges">
+              <mark className="soft-badge">{item.level}</mark>
+              <mark className="soft-badge">{item.kind}</mark>
+            </span>
           </span>
           <span className="intent-tree-id">{item.id}</span>
         </button>
@@ -1228,16 +1449,36 @@ export function App() {
             <BarChart3 size={19} />
             Dashboard
           </button>
-          <button type="button" className={`nav-item ${appView === "knowledge" ? "active" : ""}`} onClick={() => setAppView("knowledge")}>
+          <button
+            type="button"
+            className={`nav-item ${appView === "knowledge" || appView === "knowledge-docs" ? "active" : ""}`}
+            onClick={() => setAppView("knowledge")}
+          >
             <Database size={19} />
             知识库管理
           </button>
-          <button type="button" className={`nav-item ${appView === "intent" ? "active" : ""}`} onClick={() => setAppView("intent")}>
+          <button
+            type="button"
+            className={`nav-item ${appView === "intent-tree" || appView === "intent-list" ? "active" : ""}`}
+            onClick={() => setAppView("intent-tree")}
+          >
             <Layers3 size={19} />
             意图管理
             <ChevronDown size={16} />
           </button>
-          <button type="button" className={`nav-item sub ${appView === "intent" ? "active" : ""}`} onClick={() => setAppView("intent")}>
+          <button
+            type="button"
+            className={`nav-item sub ${appView === "intent-tree" ? "active" : ""}`}
+            onClick={() => setAppView("intent-tree")}
+          >
+            <Layers3 size={18} />
+            意图树配置
+          </button>
+          <button
+            type="button"
+            className={`nav-item sub ${appView === "intent-list" ? "active" : ""}`}
+            onClick={() => setAppView("intent-list")}
+          >
             <ClipboardList size={18} />
             意图列表
           </button>
@@ -1268,9 +1509,32 @@ export function App() {
           <label className="admin-search">
             <Search size={19} />
             <input
-              value={appView === "intent" ? intentSearch : kbSearch}
-              onChange={(event) => (appView === "intent" ? setIntentSearch(event.target.value) : setKbSearch(event.target.value))}
-              placeholder={appView === "intent" ? "筛选意图节点..." : "筛选知识库..."}
+              value={
+                appView === "intent-tree" || appView === "intent-list"
+                  ? intentSearch
+                  : appView === "knowledge-docs"
+                    ? docSearch
+                    : kbSearch
+              }
+              onChange={(event) => {
+                const value = event.target.value;
+                if (appView === "intent-tree" || appView === "intent-list") {
+                  setIntentSearch(value);
+                  return;
+                }
+                if (appView === "knowledge-docs") {
+                  setDocSearch(value);
+                  return;
+                }
+                setKbSearch(value);
+              }}
+              placeholder={
+                appView === "intent-tree" || appView === "intent-list"
+                  ? "筛选意图节点..."
+                  : appView === "knowledge-docs"
+                    ? "筛选文档..."
+                    : "筛选知识库..."
+              }
             />
             <kbd>Ctrl K</kbd>
           </label>
@@ -1297,105 +1561,30 @@ export function App() {
         </header>
 
         <div className="admin-content">
-          <div className="breadcrumb">首页 / {appView === "intent" ? "意图管理 / 意图列表" : "知识库管理"}</div>
-          {appView === "intent" ? (
+          <div className="breadcrumb">
+            {appView === "knowledge" && "首页 / 知识库管理"}
+            {appView === "knowledge-docs" && `首页 / 知识库管理 / 文档管理`}
+            {appView === "intent-tree" && "首页 / 意图管理 / 意图树配置"}
+            {appView === "intent-list" && "首页 / 意图管理 / 意图列表"}
+          </div>
+
+          {appView === "knowledge" ? (
             <>
-              <div className="page-heading">
-                <div>
-                  <h1>意图列表</h1>
-                  <p>查看意图树节点结构，并加载单个节点详情</p>
-                </div>
-                <div className="page-actions">
-                  <button type="button" className="outline-button" onClick={() => void refreshIntentNodes()}>
-                    <RefreshCw size={18} className={intentLoading ? "spin" : ""} />
-                    刷新
-                  </button>
-                </div>
-              </div>
-
-              <section className="stats-grid">
-                <StatCard icon={<Layers3 size={24} />} label="意图节点" value={intentNodes.length} />
-                <StatCard icon={<CheckCircle2 size={24} />} label="启用节点" value={enabledIntentCount} />
-                <StatCard icon={<Database size={24} />} label="知识库节点" value={intentNodes.filter((item) => item.kind === "KB").length} />
-                <StatCard icon={<Sparkles size={24} />} label="根节点" value={intentNodes.filter((item) => !item.parentId).length} />
-              </section>
-
-              <section className="intent-layout">
-                <section className="admin-card knowledge-overview">
-                  <div className="section-head">
-                    <strong>意图树</strong>
-                    <span>{filteredIntentNodes.length} 个</span>
-                  </div>
-                  <div className="intent-tree-panel">
-                    {intentTree.length ? renderIntentTree(intentTree) : <div className="empty-panel">暂无意图节点</div>}
-                  </div>
-                </section>
-
-                <section className="admin-card knowledge-detail">
-                  <div className="document-panel">
-                    <div className="document-panel-head">
-                      <div>
-                        <span className="panel-eyebrow">节点详情</span>
-                        <strong>{selectedIntentDetail?.name ?? "请选择左侧意图节点"}</strong>
-                        <small>{selectedIntentDetail?.fullPath ?? "点击左侧节点后查看完整路径、描述与示例问题"}</small>
-                      </div>
-                    </div>
-                    {selectedIntentDetail ? (
-                      <div className="intent-detail-grid">
-                        <div className="doc-table-wrap">
-                          <div className="intent-meta-grid">
-                            <IntentMeta label="业务 ID" value={selectedIntentDetail.id} />
-                            <IntentMeta label="数据库 ID" value={selectedIntentDetail.recordId} />
-                            <IntentMeta label="节点类型" value={intentKindText(selectedIntentDetail.kind)} />
-                            <IntentMeta label="节点层级" value={intentLevelText(selectedIntentDetail.level)} />
-                            <IntentMeta label="是否启用" value={selectedIntentDetail.enabled === 1 ? "启用" : "停用"} />
-                            <IntentMeta label="父节点" value={selectedIntentDetail.parentId || "-"} />
-                            <IntentMeta label="知识库 ID" value={selectedIntentDetail.kbId || "-"} />
-                            <IntentMeta label="Collection" value={selectedIntentDetail.collectionName || "-"} />
-                            <IntentMeta label="MCP 工具" value={selectedIntentDetail.mcpToolId || "-"} />
-                            <IntentMeta label="TopK" value={selectedIntentDetail.topK != null ? String(selectedIntentDetail.topK) : "-"} />
-                            <IntentMeta label="排序值" value={selectedIntentDetail.sortOrder != null ? String(selectedIntentDetail.sortOrder) : "-"} />
-                            <IntentMeta label="子节点数" value={String(selectedIntentDetail.children?.length ?? 0)} />
-                          </div>
-                        </div>
-                        <div className="doc-table-wrap">
-                          <div className="intent-detail-section">
-                            <strong>节点描述</strong>
-                            <p>{selectedIntentDetail.description || "暂无描述"}</p>
-                          </div>
-                        </div>
-                        <div className="doc-table-wrap">
-                          <div className="intent-detail-section">
-                            <strong>示例问题</strong>
-                            {selectedIntentDetail.examples?.length ? (
-                              <div className="intent-chip-list">
-                                {selectedIntentDetail.examples.map((example, index) => (
-                                  <span key={`${selectedIntentDetail.recordId}-example-${index}`} className="intent-chip">
-                                    {example}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <p>暂无示例问题</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="empty-panel">请选择左侧节点查看详情</div>
-                    )}
-                  </div>
-                </section>
-              </section>
-            </>
-          ) : (
-            <>
-              <div className="page-heading">
+              <div className="page-heading split">
                 <div>
                   <h1>知识库管理</h1>
                   <p>管理所有知识库及其文档</p>
                 </div>
-                <div className="page-actions">
+                <div className="page-actions row">
+                  <input
+                    className="page-search-input"
+                    value={kbSearch}
+                    onChange={(event) => setKbSearch(event.target.value)}
+                    placeholder="搜索知识库名称"
+                  />
+                  <button type="button" className="outline-button">
+                    搜索
+                  </button>
                   <button type="button" className="outline-button" onClick={() => void refreshBases()}>
                     <RefreshCw size={18} />
                     刷新
@@ -1411,117 +1600,541 @@ export function App() {
                 <StatCard icon={<Database size={24} />} label="知识库" value={bases.length} />
                 <StatCard icon={<FileText size={24} />} label="文档数" value={documents.length} />
                 <StatCard icon={<FolderOpen size={24} />} label="含文档知识库" value={bases.filter((item) => (item.documentCount ?? 0) > 0).length} />
-                <StatCard icon={<Layers3 size={24} />} label="完成文档" value={successDocs} />
+                <StatCard icon={<Layers3 size={24} />} label="创建用户数" value={new Set(bases.map((item) => item.createdBy).filter(Boolean)).size} />
               </section>
 
-              {!kbDetailOpen ? (
-                <section className="admin-card knowledge-overview">
-                  <div className="section-head">
-                    <strong>知识库列表</strong>
-                    <span>{filteredBases.length} 个</span>
+              <section className="admin-card table-card">
+                <div className="table-shell">
+                  <div className="table-header knowledge-table-grid">
+                    <span>名称</span>
+                    <span>Embedding模型</span>
+                    <span>Collection</span>
+                    <span>文档数</span>
+                    <span>负责人</span>
+                    <span>创建时间</span>
+                    <span>修改时间</span>
+                    <span>操作</span>
                   </div>
-                  <div className="knowledge-card-grid">
-                    {filteredBases.length > 0 ? (
-                      filteredBases.map((kb) => (
+                  {filteredBases.map((kb) => (
+                    <div key={kb.id} className="table-row knowledge-table-grid">
+                      <span className="link-cell">
                         <button
                           type="button"
-                          className="knowledge-card"
-                          key={kb.id}
+                          className="table-link"
                           onClick={() => {
                             setSelectedKbId(kb.id);
-                            setKbDetailOpen(true);
+                            setAppView("knowledge-docs");
                           }}
                         >
-                          <span className="row-icon">
-                            <Database size={20} />
-                          </span>
-                          <span>
-                            <strong>{kb.name}</strong>
-                            <small>{kb.collectionName}</small>
-                          </span>
-                          <b>{kb.documentCount ?? 0}</b>
+                          {kb.name}
                         </button>
-                      ))
-                    ) : (
-                      <div className="empty-panel">暂无知识库，点击上方按钮创建</div>
-                    )}
-                  </div>
-                </section>
-              ) : (
-                <section className="admin-card knowledge-detail">
-                  <div className="document-panel">
-                    <div className="document-panel-head">
-                      <div>
-                        <span className="panel-eyebrow">当前知识库</span>
-                        <strong>{selectedKbDetail ? `${selectedKbDetail.name} 的文档` : "请选择知识库"}</strong>
-                        <small>{selectedKbDetail?.collectionName ?? "选择左侧知识库后查看和上传文档"}</small>
-                      </div>
-                      <div className="section-actions">
-                        <button type="button" className="outline-button small" onClick={() => setKbDetailOpen(false)}>
-                          <ArrowLeft size={15} />
-                          返回列表
+                      </span>
+                      <span className="table-model">{kb.embeddingModel}</span>
+                      <span><mark className="soft-badge">{kb.collectionName}</mark></span>
+                      <span>{kb.documentCount ?? 0}</span>
+                      <span className="table-muted">{kb.createdBy ?? "-"}</span>
+                      <span className="table-time">{formatDateTime(kb.createTime)}</span>
+                      <span className="table-time">{formatDateTime(kb.updateTime)}</span>
+                      <span className="row-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedKbId(kb.id);
+                            void refreshKnowledgeBaseDetail(kb.id);
+                            setEditKbOpen(true);
+                          }}
+                        >
+                          编辑
                         </button>
-                        <button type="button" className="outline-button small" onClick={() => void refreshDocuments()}>
-                          <RefreshCw size={15} />
-                          刷新
+                        <button
+                          type="button"
+                          className="danger-text"
+                          onClick={() => {
+                            setSelectedKbId(kb.id);
+                            setSelectedKbDetail(kb);
+                            void handleDeleteKb();
+                          }}
+                        >
+                          删除
                         </button>
-                        <button type="button" className="outline-button small" disabled={!selectedKbDetail} onClick={() => setEditKbOpen(true)}>
-                          <Pencil size={15} />
-                          编辑知识库
-                        </button>
-                        <button type="button" className="outline-button small danger-text" disabled={!selectedKbDetail} onClick={() => void handleDeleteKb()}>
-                          <Trash2 size={15} />
-                          删除知识库
-                        </button>
-                        <button type="button" className="gradient-button small" disabled={!selectedKbId} onClick={() => setUploadOpen(true)}>
-                          <UploadCloud size={15} />
-                          上传文档
-                        </button>
-                      </div>
+                      </span>
                     </div>
-
-                    <div className="doc-table-wrap">
-                      <div className="doc-table">
-                        <div className="doc-row doc-head">
-                          <span>名称</span>
-                          <span>状态</span>
-                          <span>大小</span>
-                          <span>Chunk</span>
-                          <span>操作</span>
-                        </div>
-                        {documents.map((doc) => (
-                          <div className="doc-row" key={doc.id}>
-                            <span className="doc-title">{doc.docName}</span>
-                            <span>
-                              <mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark>
-                            </span>
-                            <span>{formatBytes(doc.fileSize)}</span>
-                            <span>{doc.chunkCount ?? 0}</span>
-                            <span className="row-actions">
-                              <button type="button" onClick={() => void openDocumentDetail(doc.id)}>
-                                详情
-                              </button>
-                              <button type="button" onClick={() => void handleChunk(doc.id)}>
-                                分块
-                              </button>
-                              <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>
-                                删除
-                              </button>
-                            </span>
-                          </div>
-                        ))}
-                        {!documents.length && <div className="empty-panel">暂无文档，上传后可进行分块</div>}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
+                  ))}
+                  {!filteredBases.length && <div className="empty-panel">暂无知识库</div>}
+                </div>
+              </section>
             </>
-          )}
+          ) : null}
+
+          {appView === "knowledge-docs" ? (
+            <>
+              <div className="page-heading split docs-page-heading">
+                <div>
+                  <h1>文档管理</h1>
+                  <p>
+                    {selectedKbDetail?.name ?? "请选择知识库"} {selectedKbDetail?.collectionName ? `（${selectedKbDetail.collectionName}）` : ""}
+                  </p>
+                </div>
+                <div className="page-actions">
+                  <button type="button" className="outline-button" onClick={() => setAppView("knowledge")}>
+                    返回知识库
+                  </button>
+                  <button type="button" className="gradient-button" disabled={!selectedKbId} onClick={() => setUploadOpen(true)}>
+                    <UploadCloud size={16} />
+                    上传文档
+                  </button>
+                </div>
+              </div>
+
+              <section className="admin-card table-card">
+                <div className="table-toolbar document-toolbar">
+                  <div>
+                    <strong>文档列表</strong>
+                    <p>支持筛选与分块管理</p>
+                  </div>
+                  <div className="toolbar-actions document-toolbar-actions">
+                    <input
+                      className="page-search-input document-search-input"
+                      value={docSearch}
+                      onChange={(event) => setDocSearch(event.target.value)}
+                      placeholder="搜索文档名称"
+                    />
+                    <button type="button" className="outline-button document-toolbar-button">
+                      搜索
+                    </button>
+                    <select
+                      className="document-status-select"
+                      value={docStatusFilter}
+                      onChange={(event) => setDocStatusFilter(event.target.value)}
+                    >
+                      <option value="all">全部状态</option>
+                      <option value="pending">待处理</option>
+                      <option value="running">处理中</option>
+                      <option value="success">完成</option>
+                      <option value="failed">失败</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="outline-button document-toolbar-button"
+                      onClick={() => void refreshDocuments()}
+                    >
+                      <RefreshCw size={18} />
+                      刷新
+                    </button>
+                  </div>
+                </div>
+                <div className="table-shell">
+                  <div className="table-header doc-table-grid">
+                    <span>名称</span>
+                    <span>状态</span>
+                    <span>大小</span>
+                    <span>Chunk</span>
+                    <span>更新时间</span>
+                    <span>操作</span>
+                  </div>
+                  {filteredDocuments.map((doc) => (
+                    <div key={doc.id} className="table-row doc-table-grid">
+                      <span>{doc.docName}</span>
+                      <span><mark className={`status status-${doc.status ?? "unknown"}`}>{statusText(doc.status)}</mark></span>
+                      <span>{formatBytes(doc.fileSize)}</span>
+                      <span>{doc.chunkCount ?? 0}</span>
+                      <span className="table-time">{formatDateTime(doc.updateTime)}</span>
+                      <span className="row-actions">
+                        <button type="button" onClick={() => void openDocumentDetail(doc.id)}>详情</button>
+                        <button type="button" onClick={() => void handleChunk(doc.id)}>分块</button>
+                        <button type="button" className="danger-text" onClick={() => void handleDeleteDoc(doc.id)}>删除</button>
+                      </span>
+                    </div>
+                  ))}
+                  {!filteredDocuments.length && <div className="empty-panel">暂无文档</div>}
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {appView === "intent-tree" ? (
+            <>
+              <div className="page-heading split intent-tree-page">
+                <div>
+                  <h1>意图树配置</h1>
+                  <p>配置意图层级、类型和节点关系</p>
+                </div>
+                <div className="page-actions intent-tree-actions">
+                  <button type="button" className="outline-button" onClick={() => void refreshIntentNodes()}>
+                    <RefreshCw size={18} className={intentLoading ? "spin" : ""} />
+                    刷新
+                  </button>
+                  <button type="button" className="gradient-button" onClick={openCreateRootIntent}>
+                    <Plus size={18} />
+                    新建根节点
+                  </button>
+                </div>
+              </div>
+
+              <section className="intent-layout compact">
+                <section className="admin-card panel-card">
+                  <div className="table-toolbar plain intent-panel-head">
+                    <div>
+                      <strong>意图树结构</strong>
+                      <p>点击节点查看详情或进行编辑</p>
+                    </div>
+                  </div>
+                  <div className="intent-tree-panel roomy">
+                    {intentTree.length ? renderIntentTree(intentTree) : <div className="empty-panel">暂无节点，请先创建</div>}
+                  </div>
+                </section>
+
+                <section className="admin-card panel-card">
+                  <div className="table-toolbar plain intent-panel-head">
+                    <div>
+                      <strong>节点详情</strong>
+                      <p>查看并管理当前选择的节点</p>
+                    </div>
+                  </div>
+                  {selectedIntentDetail ? (
+                    <div className="intent-side-detail">
+                      <div className="intent-side-head">
+                        <div className="intent-side-title">
+                          <h2>{selectedIntentDetail.name}</h2>
+                          <div className="intent-tag-row">
+                            <mark className="soft-badge">{selectedIntentDetail.id}</mark>
+                            <mark className="soft-badge">{selectedIntentDetail.level}</mark>
+                            <mark className="soft-badge">{selectedIntentDetail.kind}</mark>
+                            <mark className="soft-badge">{selectedIntentDetail.enabled === 1 ? "启用" : "停用"}</mark>
+                          </div>
+                          <p className="intent-side-subtitle">{selectedIntentDetail.id}</p>
+                        </div>
+                        <div className="side-actions vertical">
+                          <button type="button" className="gradient-button small" onClick={() => openCreateChildIntent(selectedIntentDetail)}>
+                            <Plus size={15} />
+                            新建子节点
+                          </button>
+                          <button type="button" className="outline-button small" onClick={() => openEditIntent(selectedIntentDetail)}>
+                            <Pencil size={15} />
+                            编辑节点
+                          </button>
+                          <button type="button" className="outline-button small intent-delete-button" onClick={() => void handleDeleteIntentNode()}>
+                            <Trash2 size={15} />
+                            删除节点
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="intent-field-list">
+                        <IntentField label="父节点" value={selectedIntentDetail.parentId || "ROOT"} />
+                        <IntentField label="排序" value={selectedIntentDetail.sortOrder != null ? String(selectedIntentDetail.sortOrder) : "0"} />
+                        <IntentField label="Collection" value={selectedIntentDetail.collectionName || "-"} />
+                        <IntentField label="节点 TopK" value={selectedIntentDetail.topK != null ? String(selectedIntentDetail.topK) : "默认（全局）"} />
+                      </div>
+
+                      <div className="intent-content-block">
+                        <strong>描述</strong>
+                        <p>{selectedIntentDetail.description || "暂无描述"}</p>
+                      </div>
+                      <div className="intent-content-block">
+                        <strong>示例问题</strong>
+                        <p>{selectedIntentDetail.examples?.length ? selectedIntentDetail.examples.join(" / ") : "暂无示例"}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="empty-panel">请选择左侧节点</div>
+                  )}
+                </section>
+              </section>
+            </>
+          ) : null}
+
+          {appView === "intent-list" ? (
+            <>
+              <div className="page-heading intent-list-page">
+                <div>
+                  <h1>意图列表</h1>
+                  <p>支持多维筛选、分页查看和快速定位到意图树节点</p>
+                </div>
+              </div>
+
+              <section className="admin-card table-card">
+                <div className="filter-row intent-list-filters">
+                  <input
+                    className="page-search-input wide intent-list-search"
+                    value={intentSearch}
+                    onChange={(event) => setIntentSearch(event.target.value)}
+                    placeholder="搜索意图名称/ID..."
+                  />
+                  <select className="intent-filter-select" value={intentLevelFilter} onChange={(event) => setIntentLevelFilter(event.target.value)}>
+                    <option value="all">全部层级</option>
+                    <option value="DOMAIN">DOMAIN</option>
+                    <option value="CATEGORY">CATEGORY</option>
+                    <option value="TOPIC">TOPIC</option>
+                  </select>
+                  <select className="intent-filter-select" value={intentKindFilter} onChange={(event) => setIntentKindFilter(event.target.value)}>
+                    <option value="all">全部类型</option>
+                    <option value="KB">KB</option>
+                    <option value="MCP">MCP</option>
+                    <option value="SYSTEM">SYSTEM</option>
+                  </select>
+                  <select className="intent-filter-select" value={intentStatusFilter} onChange={(event) => setIntentStatusFilter(event.target.value)}>
+                    <option value="all">全部状态</option>
+                    <option value="enabled">启用</option>
+                    <option value="disabled">停用</option>
+                  </select>
+                  <select className="intent-filter-select wide" value={intentParentFilter} onChange={(event) => setIntentParentFilter(event.target.value)}>
+                    <option value="all">全部父节点</option>
+                    <option value="ROOT">ROOT</option>
+                    {intentParentOptions.map((item) => (
+                      <option key={item.recordId} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="outline-button intent-filter-button" onClick={() => void refreshIntentNodes()}>
+                    <RefreshCw size={18} />
+                    刷新
+                  </button>
+                  <button
+                    type="button"
+                    className="outline-button intent-filter-button"
+                    onClick={() => {
+                      setIntentSearch("");
+                      setIntentLevelFilter("all");
+                      setIntentKindFilter("all");
+                      setIntentStatusFilter("all");
+                      setIntentParentFilter("all");
+                    }}
+                  >
+                    清空筛选
+                  </button>
+                </div>
+
+                <div className="table-shell">
+                  <div className="table-header intent-list-grid">
+                    <span>意图节点</span>
+                    <span>层级</span>
+                    <span>类型</span>
+                    <span>路径</span>
+                    <span>关联资源</span>
+                    <span>示例数</span>
+                    <span>操作</span>
+                  </div>
+                  {filteredIntentNodes.map((item) => (
+                    <div key={item.recordId} className="table-row intent-list-grid">
+                      <span className="intent-name-cell">
+                        <strong>{item.name}</strong>
+                        <mark className="soft-badge">{item.id}</mark>
+                      </span>
+                      <span><mark className="soft-badge">{item.level}</mark></span>
+                      <span><mark className="soft-badge">{item.kind}</mark></span>
+                      <span>{item.fullPath || item.name}</span>
+                      <span>{item.collectionName || item.mcpToolId || "-"}</span>
+                      <span>{item.examples?.length ?? 0}</span>
+                      <span className="row-actions">
+                        <button type="button" onClick={() => openEditIntent(item)}>编辑</button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppView("intent-tree");
+                            void handleSelectIntent(item.recordId);
+                          }}
+                        >
+                          定位树
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                  {!filteredIntentNodes.length && <div className="empty-panel">暂无意图节点</div>}
+                </div>
+              </section>
+            </>
+          ) : null}
 
           <p className="admin-inline-notice">{notice}</p>
         </div>
       </section>
+
+      {intentFormOpen && (
+        <Modal
+          title={intentFormMode === "edit" ? "编辑意图节点" : "新建意图节点"}
+          description="配置意图节点的层级、类型与描述信息"
+          onClose={() => setIntentFormOpen(false)}
+        >
+          <form className="modal-form" onSubmit={handleIntentFormSubmit}>
+            <div className="two-column-form">
+              <label>
+                <span>节点名称</span>
+                <input
+                  value={intentForm.name}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="例如：OA 系统"
+                />
+              </label>
+              <label>
+                <span>意图标识</span>
+                <input
+                  value={intentForm.intentCode}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, intentCode: event.target.value }))}
+                  placeholder="例如：biz-oa"
+                />
+              </label>
+            </div>
+            <div className="two-column-form">
+              <label>
+                <span>层级</span>
+                <select
+                  value={intentForm.level}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, level: Number(event.target.value) }))}
+                >
+                  <option value={0}>DOMAIN - 顶层领域</option>
+                  <option value={1}>CATEGORY - 分类</option>
+                  <option value={2}>TOPIC - 主题</option>
+                </select>
+              </label>
+              <label>
+                <span>类型</span>
+                <select
+                  value={intentForm.kind}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, kind: Number(event.target.value) }))}
+                >
+                  <option value={0}>KB - 知识库检索</option>
+                  <option value={2}>SYSTEM - 系统能力</option>
+                  <option value={1}>MCP - 工具调用</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>父节点</span>
+              <select
+                value={intentForm.parentCode}
+                onChange={(event) => setIntentForm((current) => ({ ...current, parentCode: event.target.value }))}
+              >
+                <option value="">ROOT</option>
+                {intentNodes
+                  .filter((item) => !intentForm.recordId || item.recordId !== intentForm.recordId)
+                  .map((item) => (
+                    <option key={item.recordId} value={item.id}>
+                      {item.name} ({item.id})
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              <span>知识库（可选）</span>
+              <select
+                value={intentForm.kbId}
+                onChange={(event) => setIntentForm((current) => ({ ...current, kbId: event.target.value }))}
+              >
+                <option value="">请选择知识库</option>
+                {bases.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <details open className="form-section">
+              <summary>描述与示例</summary>
+              <label>
+                <span>描述</span>
+                <textarea
+                  value={intentForm.description}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, description: event.target.value }))}
+                  rows={4}
+                  placeholder="节点的语义说明与说明场景"
+                />
+              </label>
+              <label>
+                <span>示例问题</span>
+                <textarea
+                  value={intentForm.examplesText}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, examplesText: event.target.value }))}
+                  rows={4}
+                  placeholder="每行一个示例问题"
+                />
+              </label>
+            </details>
+            <details className="form-section">
+              <summary>Prompt 配置</summary>
+              <label>
+                <span>短规则片段</span>
+                <textarea
+                  value={intentForm.promptSnippet}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, promptSnippet: event.target.value }))}
+                  rows={3}
+                />
+              </label>
+              <label>
+                <span>完整 Prompt 模板</span>
+                <textarea
+                  value={intentForm.promptTemplate}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, promptTemplate: event.target.value }))}
+                  rows={4}
+                />
+              </label>
+              <label>
+                <span>参数提取提示词模板</span>
+                <textarea
+                  value={intentForm.paramPromptTemplate}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, paramPromptTemplate: event.target.value }))}
+                  rows={4}
+                />
+              </label>
+            </details>
+            <details className="form-section">
+              <summary>高级设置</summary>
+              <div className="two-column-form">
+                <label>
+                  <span>Collection</span>
+                  <input
+                    value={intentForm.collectionName}
+                    onChange={(event) => setIntentForm((current) => ({ ...current, collectionName: event.target.value }))}
+                    placeholder="可选，通常由知识库自动带出"
+                  />
+                </label>
+                <label>
+                  <span>MCP 工具 ID</span>
+                  <input
+                    value={intentForm.mcpToolId}
+                    onChange={(event) => setIntentForm((current) => ({ ...current, mcpToolId: event.target.value }))}
+                    placeholder="例如：browser.search"
+                  />
+                </label>
+              </div>
+              <div className="two-column-form">
+                <label>
+                  <span>TopK</span>
+                  <input
+                    value={intentForm.topK}
+                    onChange={(event) => setIntentForm((current) => ({ ...current, topK: event.target.value }))}
+                    placeholder="留空使用全局默认"
+                  />
+                </label>
+                <label>
+                  <span>排序</span>
+                  <input
+                    value={intentForm.sortOrder}
+                    onChange={(event) => setIntentForm((current) => ({ ...current, sortOrder: event.target.value }))}
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+              <label className="toggle modal-toggle">
+                <input
+                  checked={intentForm.enabled}
+                  onChange={(event) => setIntentForm((current) => ({ ...current, enabled: event.target.checked }))}
+                  type="checkbox"
+                />
+                启用节点
+              </label>
+            </details>
+            <div className="modal-actions">
+              <button type="button" className="outline-button" onClick={() => setIntentFormOpen(false)}>
+                取消
+              </button>
+              <button type="submit" className="gradient-button" disabled={intentLoading}>
+                {intentLoading ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
+                {intentFormMode === "edit" ? "保存" : "创建"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {createKbOpen && (
         <Modal title="创建知识库" description="创建一个新的知识库，用于存储和检索文档" onClose={() => setCreateKbOpen(false)}>
@@ -1788,6 +2401,15 @@ function IntentMeta({ label, value }: { label: string; value: string }) {
   return (
     <div className="intent-meta-item">
       <small>{label}</small>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function IntentField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="intent-field-row">
+      <span>{label}</span>
       <strong>{value}</strong>
     </div>
   );

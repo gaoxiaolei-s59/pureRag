@@ -106,6 +106,25 @@ export type IntentNode = {
   children?: string[];
 };
 
+export type IntentNodePayload = {
+  kbId?: string;
+  intentCode: string;
+  name: string;
+  level: number;
+  parentCode?: string;
+  description?: string;
+  examples?: string[];
+  collectionName?: string;
+  mcpToolId?: string;
+  topK?: number | null;
+  kind: number;
+  sortOrder?: number;
+  enabled?: number;
+  promptSnippet?: string;
+  promptTemplate?: string;
+  paramPromptTemplate?: string;
+};
+
 export type UploadDocumentParams = {
   kbId: string;
   sourceType: "file" | "url";
@@ -310,6 +329,26 @@ export function fetchIntentNodes() {
 
 export function fetchIntentNodeDetail(id: string) {
   return request<IntentNode>(`/intent-tree/${encodeURIComponent(id)}`);
+}
+
+export function createIntentNode(params: IntentNodePayload) {
+  return request<void>("/intent-tree", {
+    method: "POST",
+    body: JSON.stringify(params)
+  });
+}
+
+export function updateIntentNode(recordId: string, params: IntentNodePayload) {
+  return request<void>(`/intent-tree/${encodeURIComponent(recordId)}`, {
+    method: "PUT",
+    body: JSON.stringify(params)
+  });
+}
+
+export function deleteIntentNode(recordId: string) {
+  return request<void>(`/intent-tree/${encodeURIComponent(recordId)}`, {
+    method: "DELETE"
+  });
 }
 
 export type ChatHandlers = {
