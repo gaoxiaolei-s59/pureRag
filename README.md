@@ -80,6 +80,8 @@ flowchart TD
     O3 --> P["MemoryServiceImpl.saveConversation"]
 ```
 
+当前前端UI
+![img.png](img.png)
 ## 当前实现边界
 
 当前仓库已经实现了“记忆 + 改写 + 意图识别 + 默认知识库检索 + 流式输出”的完整闭环，但下面两块还没有完全接入主流程：
