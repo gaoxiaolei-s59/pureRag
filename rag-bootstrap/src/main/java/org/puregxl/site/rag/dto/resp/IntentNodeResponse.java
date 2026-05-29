@@ -1,7 +1,10 @@
 package org.puregxl.site.rag.dto.resp;
 
 import lombok.Data;
+import org.puregxl.site.rag.enums.IntentKind;
 import org.puregxl.site.rag.enums.IntentLevel;
+
+import java.util.List;
 
 @Data
 public class IntentNodeResponse {
@@ -11,38 +14,37 @@ public class IntentNodeResponse {
     private String recordId;
 
     /**
-     * 唯一标识，如：
-     * - "group" / "group-hr" / "biz-oa-intro" / "middleware-redis"
+     * 业务唯一标识，如 group-hr / biz-oa-intro。
      */
     private String id;
 
     /**
-     * 知识库 ID
+     * 关联知识库 ID。
      */
     private String kbId;
 
     /**
-     * 展示名称，如「人事」「OA系统」「数据安全」
+     * 节点展示名称。
      */
     private String name;
 
     /**
-     * 语义说明，用于向量化时的语义提示词
+     * 节点描述。
      */
     private String description;
 
     /**
-     * 示例问题
+     * 示例问题列表。
      */
-    private java.util.List<String> examples;
+    private List<String> examples;
 
     /**
-     * 所属层级：DOMAIN / CATEGORY / TOPIC
+     * 所属层级。
      */
     private IntentLevel level;
 
     /**
-     * 父节点 ID，根节点为 null
+     * 父节点业务 ID，根节点为 null。
      */
     private String parentId;
 
@@ -57,9 +59,9 @@ public class IntentNodeResponse {
     private String mcpToolId;
 
     /**
-     * 节点类型：KB / MCP / SYSTEM。
+     * 节点类型。
      */
-    private org.puregxl.site.rag.enums.IntentKind kind;
+    private IntentKind kind;
 
     private Integer topK;
 
@@ -79,7 +81,7 @@ public class IntentNodeResponse {
     private String fullPath;
 
     /**
-     * 子节点业务 ID 列表。
+     * 当前节点直接子节点业务 ID 列表。
      */
-    private java.util.List<String> children;
+    private List<String> children;
 }

@@ -23,16 +23,13 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class IntentTreeServiceImpl implements IntentTreeService {
-
     private final IntentClassifier intentClassifier;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final IntentTreeMapper intentTreeMapper;
     private final IntentTreeCacheManager intentTreeCacheManager;
 
     /**
-     * 查询全局意图图响应。
-     * 这里不再承担缓存、查库和树构建职责，只负责把分类器返回的领域节点转换成前端响应对象，
-     * 保持 Service 层编排职责单一，方便后续替换不同的分类器实现。
+     * 查询全局意图图响应。 * 这里不再承担缓存、查库和树构建职责，只负责把分类器返回的领域节点转换成前端响应对象， * 保持 Service 层编排职责单一，方便后续替换不同的分类器实现。
      */
     @Override
     public List<IntentNodeResponse> queryIntentNode() {
@@ -40,8 +37,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
     }
 
     /**
-     * 按数据库主键查询意图节点详情。
-     * 编辑页面需要拿到完整配置字段，因此这里直接基于落库对象组装响应。
+     * 按数据库主键查询意图节点详情。 * 编辑页面需要拿到完整配置字段，因此这里直接基于落库对象组装响应。
      */
     @Override
     public IntentNodeResponse getIntentNodeById(String id) {
@@ -53,39 +49,19 @@ public class IntentTreeServiceImpl implements IntentTreeService {
     }
 
     /**
-     * 创建意图节点。
-     * 这里直接落库扁平节点数据，并在成功后清理意图树缓存，
-     * 保证下一次查询会基于最新数据重新构建树结构。
+     * 创建意图节点。 * 这里直接落库扁平节点数据，并在成功后清理意图树缓存， * 保证下一次查询会基于最新数据重新构建树结构。
      */
     @Override
     public void createIntentNode(IntentNodeCreateRequest request) {
         if (request == null) {
             throw new ClientException("意图节点创建参数不能为空");
         }
-        intentTreeMapper.insert(IntentNodeDO.builder()
-                .kbId(request.getKbId())
-                .intentCode(request.getIntentCode())
-                .name(request.getName())
-                .level(request.getLevel())
-                .parentCode(request.getParentCode())
-                .description(request.getDescription())
-                .examples(toExamplesJson(request.getExamples()))
-                .collectionName(resolveCollectionName(request.getKbId(), request.getCollectionName()))
-                .mcpToolId(request.getMcpToolId())
-                .topK(request.getTopK())
-                .kind(request.getKind())
-                .sortOrder(request.getSortOrder())
-                .enabled(request.getEnabled())
-                .promptSnippet(request.getPromptSnippet())
-                .promptTemplate(request.getPromptTemplate())
-                .paramPromptTemplate(request.getParamPromptTemplate())
-                .build());
+        intentTreeMapper.insert(IntentNodeDO.builder().kbId(request.getKbId()).intentCode(request.getIntentCode()).name(request.getName()).level(request.getLevel()).parentCode(request.getParentCode()).description(request.getDescription()).examples(toExamplesJson(request.getExamples())).collectionName(resolveCollectionName(request.getKbId(), request.getCollectionName())).mcpToolId(request.getMcpToolId()).topK(request.getTopK()).kind(request.getKind()).sortOrder(request.getSortOrder()).enabled(request.getEnabled()).promptSnippet(request.getPromptSnippet()).promptTemplate(request.getPromptTemplate()).paramPromptTemplate(request.getParamPromptTemplate()).build());
         intentTreeCacheManager.clear();
     }
 
     /**
-     * 按数据库主键更新意图节点。
-     * 先查出现有节点，再在原对象上覆盖可变字段，避免把未传字段误更新为空。
+     * 按数据库主键更新意图节点。 * 先查出现有节点，再在原对象上覆盖可变字段，避免把未传字段误更新为空。
      */
     @Override
     public void updateIntentNode(String id, IntentNodeUpdateRequest request) {
@@ -117,8 +93,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
     }
 
     /**
-     * 按数据库主键删除意图节点。
-     * 删除前先校验节点存在，避免前端误删时静默成功。
+     * 按数据库主键删除意图节点。 * 删除前先校验节点存在，避免前端误删时静默成功。
      */
     @Override
     public void deleteIntentNode(String id) {
@@ -131,9 +106,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
     }
 
     private List<IntentNodeResponse> toResponses(List<IntentNode> nodes) {
-        return nodes.stream()
-                .map(node -> BeanUtil.copyProperties(node, IntentNodeResponse.class))
-                .toList();
+        return nodes.stream().map(node -> BeanUtil.copyProperties(node, IntentNodeResponse.class)).toList();
     }
 
     private IntentNodeResponse toResponse(IntentNodeDO nodeDO) {
@@ -181,8 +154,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
     }
 
     /**
-     * collectionName 优先根据 kbId 反查知识库配置。
-     * 这样前端只传 kbId 就能创建/更新 KB 类型意图；查不到知识库时再回退显式入参，兼容老调用方。
+     * collectionName 优先根据 kbId 反查知识库配置。 * 这样前端只传 kbId 就能创建/更新 KB 类型意图；查不到知识库时再回退显式入参，兼容老调用方。
      */
     private String resolveCollectionName(String kbId, String explicitCollectionName) {
         if (StrUtil.isNotBlank(kbId)) {

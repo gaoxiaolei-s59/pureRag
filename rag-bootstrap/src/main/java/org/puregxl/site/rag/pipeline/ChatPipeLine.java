@@ -5,8 +5,11 @@ import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.rag.config.RAGDefaultProperties;
+import org.puregxl.site.rag.config.SearchChannelProperties;
 import org.puregxl.site.rag.core.intent.IntentResolver;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
+import org.puregxl.site.rag.core.retrieve.RetrievalContext;
+import org.puregxl.site.rag.core.retrieve.RetrievalEngine;
 import org.puregxl.site.rag.core.rewrite.QueryRewriteService;
 import org.puregxl.site.rag.core.rewrite.RewriteResult;
 import org.puregxl.site.rag.retrieval.RagRetrievalService;
@@ -43,6 +46,8 @@ public class ChatPipeLine {
     private final QueryRewriteService queryRewriteService;
     private final PromptTemplateLoader promptTemplateLoader;
     private final IntentResolver intentResolver;
+    private final RetrievalEngine retrievalEngine;
+    private final SearchChannelProperties searchChannelProperties;
 
     /**
      * 执行一次基础 RAG 流式问答。
@@ -68,21 +73,23 @@ public class ChatPipeLine {
         // 3.多路并行检索子问题
         resolveIntents(context);
 
+        // 4.检查是否全部命中SYSTEM
         StreamCancellationHandle systemOnlyHandle = handleSystemOnly(context, memoryMessages);
         if (systemOnlyHandle != null) {
             return systemOnlyHandle;
         }
 
+        // 5.发起调用
         String question = context.getQuestion().trim();
         String retrievalQuestion = resolveRetrievalQuestion(context, question);
 
         List<Float> queryEmbedding = embeddingService.embed(retrievalQuestion);
 
-
         List<RetrievedChunk> candidates = retrievalService.searchSimilarChunks(
                 ragDefaultProperties.getCollectionName(),
                 queryEmbedding,
                 safePositive(ragDefaultProperties.getRetrieveTopK(), 8));
+
 //        List<RetrievedChunk> contextChunks = rerank(question, candidates);
         ChatRequest request = buildChatRequest(question, candidates, memoryMessages, context.isDeepThinking());
 
@@ -102,6 +109,30 @@ public class ChatPipeLine {
     }
 
 
+    /**
+     * 发起调用方法
+     * @param context
+     * @return
+     */
+    public RetrievalContext retrieval(StreamChatContext context) {
+        if (context == null) {
+            throw new ClientException("检索上下文不能为空");
+        }
+
+        // 这里统一把子问题意图和默认 TopK 交给检索引擎做通道拆分，
+        // ChatPipeLine 只负责流程编排，不重复承担 KB/MCP 过滤职责。
+        return retrievalEngine.retrieval(context.getSubIntents(), searchChannelProperties.getDefaultTopK());
+    }
+
+
+    /**
+     * 构建请求
+     * @param question
+     * @param contextChunks
+     * @param memoryMessages
+     * @param deepThinking
+     * @return
+     */
     private ChatRequest buildChatRequest(String question, List<RetrievedChunk> contextChunks, List<ChatMessage> memoryMessages, boolean deepThinking) {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(buildSystemPrompt(contextChunks)));

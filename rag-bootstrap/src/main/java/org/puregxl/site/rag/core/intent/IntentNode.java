@@ -1,7 +1,10 @@
 package org.puregxl.site.rag.core.intent;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import org.puregxl.site.rag.enums.IntentKind;
 import org.puregxl.site.rag.enums.IntentLevel;
 
@@ -10,6 +13,8 @@ import java.util.List;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class IntentNode {
     /**
      * 数据库主键。
@@ -60,14 +65,6 @@ public class IntentNode {
 
 
     /**
-     * 预计算好的嵌入向量
-     * 仅向量意图识别测试使用
-     */
-    @Deprecated
-    @Builder.Default
-    private float[] embedding = null;
-
-    /**
      * 仅用于排查/打印的全路径，如「集团信息化 > 人事」
      */
     @Builder.Default
@@ -116,6 +113,7 @@ public class IntentNode {
      * - 叶子节点才挂知识库（Milvus Collection）
      * - 叶子节点才会参与意图匹配打分
      */
+    @JsonIgnore
     public boolean isLeaf() {
         return children == null || children.isEmpty();
     }
@@ -123,6 +121,7 @@ public class IntentNode {
     /**
      * 是否为 KB 类型节点
      */
+    @JsonIgnore
     public boolean isKB() {
         return kind == null || kind == IntentKind.KB;
     }
@@ -130,6 +129,7 @@ public class IntentNode {
     /**
      * 是否为 MCP 类型节点
      */
+    @JsonIgnore
     public boolean isMCP() {
         return kind == IntentKind.MCP;
     }
@@ -137,6 +137,7 @@ public class IntentNode {
     /**
      * 是否为 SYSTEM 类型节点
      */
+    @JsonIgnore
     public boolean isSystem() {
         return kind == IntentKind.SYSTEM;
     }

@@ -17,10 +17,8 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 public class MemoryController {
+
     private final MemoryService memoryService;
-
-
-
 
     @GetMapping("/memory/v1/query")
     public Result<List<MemoryQueryResponse>> queryAllChatMessage(String conversionId) {

@@ -89,7 +89,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Value("knowledge-document-chunk_topic${unique-name:}")
     private String chunkTopic = "knowledge-document-chunk_topic";
-    
+
     /**
      * 上传文档：入库记录 + 文件落盘，返回文档ID
      */
@@ -245,6 +245,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     /**
      * 更新文档接口
+     *
      * @param docId
      * @param requestParam
      */
@@ -310,6 +311,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     /**
      * 开始切块
+     *
      * @param docId
      */
     @Override
@@ -475,6 +477,12 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         return defaultValue;
     }
 
+    /**
+     * 按照特定的格式切分文档
+     * @param text
+     * @param config
+     * @return
+     */
     private List<String> splitTextIntoChunks(String text, ChunkConfig config) {
         String normalizedText = text.replace("\r\n", "\n").trim();
         List<String> chunks = new ArrayList<>();
@@ -683,9 +691,12 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private record ChunkConfig(int chunkSize, int overlapSize) {
+
+
     }
 
-    private record UrlMultipartFile(String name, String originalFilename, String contentType, byte[] bytes) implements MultipartFile {
+    private record UrlMultipartFile(String name, String originalFilename, String contentType,
+                                    byte[] bytes) implements MultipartFile {
 
         @Override
         public String getName() {

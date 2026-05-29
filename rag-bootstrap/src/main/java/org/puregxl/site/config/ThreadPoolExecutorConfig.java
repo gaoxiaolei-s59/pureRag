@@ -51,7 +51,7 @@ public class ThreadPoolExecutorConfig {
                 TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(200),
                 ThreadFactoryBuilder.create()
-                        .setNamePrefix("model_stream_executor_")
+                        .setNamePrefix("memory_load_executor_")
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy()
         );
@@ -74,7 +74,27 @@ public class ThreadPoolExecutorConfig {
                 TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(200),
                 ThreadFactoryBuilder.create()
-                        .setNamePrefix("model_stream_executor_")
+                        .setNamePrefix("intent_recognition_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+    }
+
+    /**
+     * 检索上下文并行构建线程池。
+     * <p>
+     * 这里按子问题粒度并发拆分 KB/MCP 上下文，和意图识别、记忆加载隔离，避免相互抢占同一批线程。
+     */
+    @Bean
+    public Executor retrievalBuildExecutor() {
+        return new ThreadPoolExecutor(
+                Math.max(2, CPU_COUNT / 2),
+                Math.max(4, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("retrieval_build_executor_")
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy()
         );

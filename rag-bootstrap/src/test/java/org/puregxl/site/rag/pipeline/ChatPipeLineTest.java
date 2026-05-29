@@ -9,10 +9,12 @@ import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
 import org.puregxl.site.rag.config.RAGDefaultProperties;
+import org.puregxl.site.rag.config.SearchChannelProperties;
 import org.puregxl.site.rag.core.intent.IntentNode;
 import org.puregxl.site.rag.core.intent.IntentResolver;
 import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
+import org.puregxl.site.rag.core.retrieve.RetrievalEngine;
 import org.puregxl.site.rag.core.rewrite.QueryRewriteService;
 import org.puregxl.site.rag.core.rewrite.RewriteResult;
 import org.puregxl.site.rag.enums.IntentKind;
@@ -40,8 +42,10 @@ class ChatPipeLineTest {
         MemoryService memoryService = mock(MemoryService.class);
         QueryRewriteService queryRewriteService = mock(QueryRewriteService.class);
         IntentResolver intentResolver = mock(IntentResolver.class);
+        RetrievalEngine retrievalEngine = mock(RetrievalEngine.class);
         PromptTemplateLoader promptTemplateLoader = new PromptTemplateLoader();
         RAGDefaultProperties properties = new RAGDefaultProperties();
+        SearchChannelProperties searchChannelProperties = new SearchChannelProperties();
         properties.setCollectionName("kb_collection");
         properties.setRetrieveTopK(8);
         ChatPipeLine pipeLine = new ChatPipeLine(
@@ -52,7 +56,9 @@ class ChatPipeLineTest {
                 memoryService,
                 queryRewriteService,
                 promptTemplateLoader,
-                intentResolver
+                intentResolver,
+                retrievalEngine,
+                searchChannelProperties
         );
 
         String question = "帮我写一段自我介绍";
