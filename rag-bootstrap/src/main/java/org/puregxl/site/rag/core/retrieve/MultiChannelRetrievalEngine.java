@@ -4,16 +4,17 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.puregxl.site.infra.framework.convention.RetrievedChunk;
-import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
-import org.puregxl.site.rag.retrieval.RagRetrievalService;
+import org.puregxl.site.rag.core.retrieve.channel.SearchChannel;
+import org.puregxl.site.rag.core.retrieve.channel.SearchChannelResult;
 import org.springframework.stereotype.Service;
-
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
+import java.util.Objects;
 
 /**
  * 多通道检索引擎
@@ -28,52 +29,87 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class MultiChannelRetrievalEngine {
 
-    private final EmbeddingService embeddingService;
-    private final RagRetrievalService ragRetrievalService;
+    private static final String MULTI_CHANNEL_SEARCH_NAME = "multi-channel-search";
+
+    private final List<SearchChannel> searchChannel;
 
     /**
-     * 执行单个子问题的 KB 通道检索。
-     * <p>
-     * 当前先实现 KB 检索：对同一个子问题只做一次向量化，然后按命中的意图节点逐个到对应 Collection 召回，
-     * 最终返回「意图 ID -> Chunk 列表」的聚合结果，供上层继续拼装上下文。
+     * 执行单个子问题的多通道检索，并聚合所有通道结果。
      */
-    public Map<String, List<RetrievedChunk>> retrieveKbByIntent(SubQuestionIntent subIntent, int defaultTopK) {
-        if (subIntent == null || StrUtil.isBlank(subIntent.getSubQuestion()) || CollUtil.isEmpty(subIntent.getNodeScores())) {
-            return Map.of();
+    public SearchChannelResult search(SubQuestionIntent subIntent, int defaultTopK) {
+        if (subIntent == null || StrUtil.isBlank(subIntent.getSubQuestion())) {
+            return emptyResult();
         }
 
-        List<Float> queryEmbedding = embeddingService.embed(subIntent.getSubQuestion().trim());
-        if (CollUtil.isEmpty(queryEmbedding)) {
-            return Map.of();
-        }
+        // 1.判断分数最高的节点如果低confidenceThreshold 进入全局检索
+        // 2.
 
-        Map<String, List<RetrievedChunk>> result = new LinkedHashMap<>();
-        for (NodeScore nodeScore : subIntent.getNodeScores()) {
-            if (nodeScore == null || nodeScore.getIntentNode() == null) {
-                continue;
-            }
+        List<RetrievedChunk> retrievedChunks = new ArrayList<>();
+        Map<String, List<RetrievedChunk>> chunksByIntent = new LinkedHashMap<>();
+        List<SearchChannelResult> channelResults = executeEnabledChannels(subIntent, defaultTopK);
 
-            String intentId = nodeScore.getIntentNode().getId();
-            String collectionName = nodeScore.getIntentNode().getCollectionName();
-            if (StrUtil.hasBlank(intentId, collectionName)) {
-                continue;
-            }
+        channelResults.forEach(channelResult -> mergeChannelResult(channelResult, retrievedChunks, chunksByIntent));
 
-            int topK = resolveTopK(nodeScore, defaultTopK);
-            List<RetrievedChunk> chunks = ragRetrievalService.searchSimilarChunks(collectionName, queryEmbedding, topK);
-            if (CollUtil.isEmpty(chunks)) {
-                continue;
-            }
-            result.put(intentId, chunks);
-        }
-        return result;
+        return SearchChannelResult.builder()
+                .channelName(MULTI_CHANNEL_SEARCH_NAME)
+                .retrievedChunks(retrievedChunks)
+                .intentChunks(chunksByIntent)
+                .build();
     }
 
-    private int resolveTopK(NodeScore nodeScore, int defaultTopK) {
-        Integer nodeTopK = nodeScore.getIntentNode().getTopK();
-        if (nodeTopK != null && nodeTopK > 0) {
-            return nodeTopK;
+    /**
+     * 兼容当前仅需要按意图分组结果的调用方。
+     */
+    public Map<String, List<RetrievedChunk>> retrieveKbByIntent(SubQuestionIntent subIntent, int defaultTopK) {
+        return search(subIntent, defaultTopK).getIntentChunks();
+    }
+
+    /**
+     * 按优先级执行所有可用通道。
+     * <p>
+     * 这里把“选择哪些通道执行”的逻辑和“怎么合并结果”的逻辑拆开，避免主流程里同时处理两类关注点。
+     */
+    private List<SearchChannelResult> executeEnabledChannels(SubQuestionIntent subIntent, int defaultTopK) {
+        return searchChannel.stream()
+                .sorted(Comparator.comparing(SearchChannel::priority))
+                .filter(Objects::nonNull)
+                .filter(channel -> channel.isEnabled(subIntent))
+                .map(channel -> channel.search(subIntent, defaultTopK))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * 把单个通道的输出合并到总结果中。
+     * <p>
+     * 这里同时维护两份视图：
+     * 1. 扁平 Chunk 列表：方便全局检索兜底场景直接拼上下文；
+     * 2. 按意图分组结果：方便定向检索按意图构建结构化上下文。
+     */
+    private void mergeChannelResult(SearchChannelResult channelResult,
+                                    List<RetrievedChunk> retrievedChunks,
+                                    Map<String, List<RetrievedChunk>> chunksByIntent) {
+        if (CollUtil.isNotEmpty(channelResult.getRetrievedChunks())) {
+            retrievedChunks.addAll(channelResult.getRetrievedChunks());
         }
-        return Math.max(defaultTopK, 1);
+        if (channelResult.getIntentChunks() == null) {
+            return;
+        }
+        channelResult.getIntentChunks().forEach((intentId, chunks) ->
+                chunksByIntent.merge(intentId, chunks, this::mergeChunkLists));
+    }
+
+    private List<RetrievedChunk> mergeChunkLists(List<RetrievedChunk> existing, List<RetrievedChunk> incoming) {
+        List<RetrievedChunk> merged = new ArrayList<>(existing);
+        merged.addAll(incoming);
+        return merged;
+    }
+
+    private SearchChannelResult emptyResult() {
+        return SearchChannelResult.builder()
+                .channelName(MULTI_CHANNEL_SEARCH_NAME)
+                .retrievedChunks(List.of())
+                .intentChunks(Map.of())
+                .build();
     }
 }

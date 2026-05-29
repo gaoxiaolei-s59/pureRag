@@ -92,3 +92,50 @@ flowchart TD
 如果你准备继续演进这条链路，建议先阅读：
 
 - [docs/rag-retrieval-architecture.md](/Users/gaoxaiolei/IdeaProjects/RagTest/docs/rag-retrieval-architecture.md)
+  SubQuestionIntent
+  子问题 + NodeScore 列表
+  |
+  v
+  歧义判断 / system-only 判断
+  |
+  v
+  RetrievalEngine
+  |
+  |-- KB NodeScore
+  |     -> 多通道检索
+  |     -> Embedding
+  |     -> Milvus/PGVector
+  |     -> RetrievedChunk
+  |     -> 去重
+  |     -> Rerank
+  |     -> formatKbContext
+  |
+  |-- MCP NodeScore
+  -> 参数提取
+  -> 工具注册表找 executor
+  -> 工具调用
+  -> formatMcpContext
+  |
+  v
+  RetrievalContext
+  kbContext
+  mcpContext
+  intentChunks
+  |
+  v
+  PromptContext
+  |
+  v
+  ChatMessage messages
+  |
+  v
+  ChatRequest
+  |
+  v
+  LLMService.streamChat
+  |
+  v
+  SSE 流式返回前端
+  |
+  v
+  assistant 消息落库

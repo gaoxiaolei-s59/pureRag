@@ -115,10 +115,6 @@ public class ChatPipeLine {
      * @return
      */
     public RetrievalContext retrieval(StreamChatContext context) {
-        if (context == null) {
-            throw new ClientException("检索上下文不能为空");
-        }
-
         // 这里统一把子问题意图和默认 TopK 交给检索引擎做通道拆分，
         // ChatPipeLine 只负责流程编排，不重复承担 KB/MCP 过滤职责。
         return retrievalEngine.retrieval(context.getSubIntents(), searchChannelProperties.getDefaultTopK());

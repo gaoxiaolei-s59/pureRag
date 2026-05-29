@@ -14,7 +14,6 @@ public class SearchChannelProperties {
      */
     private int defaultTopK = 20;
 
-
     private Channels channels;
 
     @Data

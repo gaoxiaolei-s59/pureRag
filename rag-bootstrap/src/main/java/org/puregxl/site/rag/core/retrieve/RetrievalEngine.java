@@ -8,6 +8,7 @@ import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.NodeScoreFilters;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
+import org.puregxl.site.rag.core.retrieve.channel.SearchChannelResult;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -31,16 +32,8 @@ public class RetrievalEngine implements RetrievalService{
     private final Executor retrievalBuildExecutor;
     private final NodeScoreFilters nodeScoreFilters;
 
-
     /**
-     * 并行构建检索上下文。
-     * <p>
-     * 这里按子问题粒度提交异步任务，每个任务只负责把当前子问题拆成 KB/MCP 两路可消费的上下文，
-     * 最终再统一汇总，保证主流程清晰，也方便后续继续接入真正的多通道检索执行。
-     *
-     * @param subIntents
-     * @param defaultTopK
-     * @return
+     * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
      */
     @Override
     public RetrievalContext retrieval(List<SubQuestionIntent> subIntents, int defaultTopK) {
@@ -100,11 +93,14 @@ public class RetrievalEngine implements RetrievalService{
         List<NodeScore> mcp = nodeScoreFilters.mcp(subIntent.getNodeScores());
 
         List<NodeScore> kb = nodeScoreFilters.kb(subIntent.getNodeScores());
-        Map<String, List<RetrievedChunk>> intentChunks = CollUtil.isEmpty(kb)
-                ? Map.of()
-                : multiChannelRetrievalEngine.retrieveKbByIntent(rebuildSubIntent(subIntent, kb), TopK);
 
-        String kbContext = buildKbContext(subIntent.getSubQuestion(), kb, intentChunks);
+        SearchChannelResult searchResult = multiChannelRetrievalEngine.search(subIntent, TopK);
+
+        Map<String, List<RetrievedChunk>> intentChunks = searchResult.getIntentChunks() == null
+                ? Map.of()
+                : searchResult.getIntentChunks();
+
+        String kbContext = buildKbContext(subIntent.getSubQuestion(), kb, intentChunks, searchResult.getRetrievedChunks());
         String mcpContext = "";
         return new SubQuestionContext(subIntent.getSubQuestion(), kbContext, mcpContext, intentChunks);
     }
@@ -116,30 +112,43 @@ public class RetrievalEngine implements RetrievalService{
      */
     private String buildKbContext(String question,
                                   List<NodeScore> kbNodeScores,
-                                  Map<String, List<RetrievedChunk>> intentChunks) {
-        if (StrUtil.isBlank(question) || CollUtil.isEmpty(kbNodeScores) || CollUtil.isEmpty(intentChunks)) {
+                                  Map<String, List<RetrievedChunk>> intentChunks,
+                                  List<RetrievedChunk> retrievedChunks) {
+        if (StrUtil.isBlank(question)) {
             return "";
         }
 
         StringBuilder builder = new StringBuilder();
         builder.append("子问题：").append(question.trim());
+        boolean appended = false;
 
-        for (NodeScore kbNodeScore : kbNodeScores) {
-            if (kbNodeScore == null || kbNodeScore.getIntentNode() == null) {
-                continue;
-            }
-            String intentId = kbNodeScore.getIntentNode().getId();
-            List<RetrievedChunk> chunks = intentChunks.get(intentId);
-            if (CollUtil.isEmpty(chunks)) {
-                continue;
-            }
+        if (CollUtil.isNotEmpty(kbNodeScores) && CollUtil.isNotEmpty(intentChunks)) {
+            for (NodeScore kbNodeScore : kbNodeScores) {
+                if (kbNodeScore == null || kbNodeScore.getIntentNode() == null) {
+                    continue;
+                }
+                String intentId = kbNodeScore.getIntentNode().getId();
+                List<RetrievedChunk> chunks = intentChunks.get(intentId);
+                if (CollUtil.isEmpty(chunks)) {
+                    continue;
+                }
 
-            builder.append("\n知识意图：").append(resolveIntentLabel(kbNodeScore));
-            for (int index = 0; index < chunks.size(); index++) {
-                builder.append("\n").append(index + 1).append(". ").append(chunks.get(index).getText());
+                appended = true;
+                builder.append("\n知识意图：").append(resolveIntentLabel(kbNodeScore));
+                for (int index = 0; index < chunks.size(); index++) {
+                    builder.append("\n").append(index + 1).append(". ").append(chunks.get(index).getText());
+                }
             }
         }
-        return builder.toString();
+
+        if (!appended && CollUtil.isNotEmpty(retrievedChunks)) {
+            builder.append("\n全局向量检索结果：");
+            for (int index = 0; index < retrievedChunks.size(); index++) {
+                builder.append("\n").append(index + 1).append(". ").append(retrievedChunks.get(index).getText());
+            }
+            appended = true;
+        }
+        return appended ? builder.toString() : "";
     }
 
     private String resolveIntentLabel(NodeScore kbNodeScore) {

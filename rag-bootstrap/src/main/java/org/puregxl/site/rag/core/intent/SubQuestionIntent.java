@@ -11,7 +11,7 @@ import java.util.List;
 @AllArgsConstructor
 public class SubQuestionIntent {
     /**
-     * 字问题文本
+     * 子问题文本
      */
     private String subQuestion;
 

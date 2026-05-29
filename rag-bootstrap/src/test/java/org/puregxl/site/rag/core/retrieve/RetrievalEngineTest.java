@@ -6,6 +6,7 @@ import org.puregxl.site.rag.core.intent.IntentNode;
 import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.NodeScoreFilters;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
+import org.puregxl.site.rag.core.retrieve.channel.SearchChannelResult;
 import org.puregxl.site.rag.enums.IntentKind;
 
 import java.util.List;
@@ -57,12 +58,22 @@ class RetrievalEngineTest {
                         .build()
         ));
 
-        when(multiChannelRetrievalEngine.retrieveKbByIntent(first, 4)).thenReturn(Map.of(
-                "intent-oa", List.of(RetrievedChunk.builder().id("c1").text("OA 申请走审批流").score(0.91F).build())
-        ));
-        when(multiChannelRetrievalEngine.retrieveKbByIntent(second, 4)).thenReturn(Map.of(
-                "intent-finance", List.of(RetrievedChunk.builder().id("c2").text("报销需要发票原件").score(0.88F).build())
-        ));
+        when(multiChannelRetrievalEngine.search(first, 4)).thenReturn(SearchChannelResult.builder()
+                .retrievedChunks(List.of(
+                        RetrievedChunk.builder().id("c1").text("OA 申请走审批流").score(0.91F).build()
+                ))
+                .intentChunks(Map.of(
+                        "intent-oa", List.of(RetrievedChunk.builder().id("c1").text("OA 申请走审批流").score(0.91F).build())
+                ))
+                .build());
+        when(multiChannelRetrievalEngine.search(second, 4)).thenReturn(SearchChannelResult.builder()
+                .retrievedChunks(List.of(
+                        RetrievedChunk.builder().id("c2").text("报销需要发票原件").score(0.88F).build()
+                ))
+                .intentChunks(Map.of(
+                        "intent-finance", List.of(RetrievedChunk.builder().id("c2").text("报销需要发票原件").score(0.88F).build())
+                ))
+                .build());
 
         RetrievalContext result = retrievalEngine.retrieval(List.of(first, second), 4);
 
@@ -96,5 +107,39 @@ class RetrievalEngineTest {
         assertThat(taskCount.get()).isZero();
         assertThat(result.isEmpty()).isTrue();
         assertThat(result.getIntentChunks()).isEmpty();
+    }
+
+    @Test
+    void retrievalBuildsKbContextFromGlobalChunksWhenNoIntentChunksExist() {
+        Executor immediateExecutor = Runnable::run;
+        MultiChannelRetrievalEngine multiChannelRetrievalEngine = mock(MultiChannelRetrievalEngine.class);
+        RetrievalEngine retrievalEngine = new RetrievalEngine(
+                multiChannelRetrievalEngine,
+                immediateExecutor,
+                new NodeScoreFilters()
+        );
+        SubQuestionIntent subIntent = new SubQuestionIntent("报销流程在哪申请", List.of(
+                NodeScore.builder()
+                        .score(0.35D)
+                        .intentNode(IntentNode.builder()
+                                .id("intent-finance")
+                                .name("财务制度")
+                                .kind(IntentKind.KB)
+                                .kbId("kb-finance")
+                                .collectionName("kb_collection_finance")
+                                .build())
+                        .build()
+        ));
+        when(multiChannelRetrievalEngine.search(subIntent, 5)).thenReturn(SearchChannelResult.builder()
+                .retrievedChunks(List.of(
+                        RetrievedChunk.builder().id("g1").text("全局检索命中：报销在 OA 发起").score(0.8F).build()
+                ))
+                .intentChunks(Map.of())
+                .build());
+
+        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 5);
+
+        assertThat(result.getKbContext()).contains("全局向量检索结果");
+        assertThat(result.getKbContext()).contains("报销在 OA 发起");
     }
 }

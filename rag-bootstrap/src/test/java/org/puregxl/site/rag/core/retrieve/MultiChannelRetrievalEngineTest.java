@@ -1,53 +1,56 @@
 package org.puregxl.site.rag.core.retrieve;
 
 import org.junit.jupiter.api.Test;
-import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.puregxl.site.infra.framework.convention.RetrievedChunk;
-import org.puregxl.site.rag.core.intent.IntentNode;
-import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
-import org.puregxl.site.rag.enums.IntentKind;
-import org.puregxl.site.rag.retrieval.RagRetrievalService;
+import org.puregxl.site.rag.core.retrieve.channel.SearchChannel;
+import org.puregxl.site.rag.core.retrieve.channel.SearchChannelResult;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class MultiChannelRetrievalEngineTest {
 
     @Test
-    void retrieveKbByIntentUsesIntentCollectionAndNodeTopK() {
-        EmbeddingService embeddingService = mock(EmbeddingService.class);
-        RagRetrievalService ragRetrievalService = mock(RagRetrievalService.class);
-        MultiChannelRetrievalEngine retrievalEngine = new MultiChannelRetrievalEngine(embeddingService, ragRetrievalService);
-        SubQuestionIntent subIntent = new SubQuestionIntent("OA 怎么申请", List.of(
-                NodeScore.builder()
-                        .score(0.92D)
-                        .intentNode(IntentNode.builder()
-                                .id("intent-oa")
-                                .name("OA 流程")
-                                .kind(IntentKind.KB)
-                                .kbId("kb-oa")
-                                .collectionName("kb_collection_oa")
-                                .topK(3)
-                                .build())
-                        .build()
-        ));
+    void retrieveKbByIntentMergesChunksFromMultipleChannels() {
+        SearchChannel firstChannel = mock(SearchChannel.class);
+        SearchChannel secondChannel = mock(SearchChannel.class);
+        MultiChannelRetrievalEngine retrievalEngine = new MultiChannelRetrievalEngine(List.of(firstChannel, secondChannel));
+        SubQuestionIntent subIntent = new SubQuestionIntent("OA 怎么申请", List.of());
 
-        when(embeddingService.embed("OA 怎么申请")).thenReturn(List.of(0.1F, 0.2F));
-        when(ragRetrievalService.searchSimilarChunks(eq("kb_collection_oa"), any(), eq(3))).thenReturn(List.of(
-                RetrievedChunk.builder().id("chunk-1").text("OA 申请需要先提交审批").score(0.93F).build()
-        ));
+        when(firstChannel.priority()).thenReturn(10);
+        when(secondChannel.priority()).thenReturn(100);
+        when(firstChannel.isEnabled(subIntent)).thenReturn(true);
+        when(secondChannel.isEnabled(subIntent)).thenReturn(true);
+        when(firstChannel.search(subIntent, 5)).thenReturn(SearchChannelResult.builder()
+                .retrievedChunks(List.of(
+                        RetrievedChunk.builder().id("chunk-1").text("OA 申请需要先提交审批").score(0.93F).build()
+                ))
+                .intentChunks(Map.of(
+                        "intent-oa", List.of(RetrievedChunk.builder().id("chunk-1").text("OA 申请需要先提交审批").score(0.93F).build())
+                ))
+                .build());
+        when(secondChannel.search(subIntent, 5)).thenReturn(SearchChannelResult.builder()
+                .retrievedChunks(List.of(
+                        RetrievedChunk.builder().id("chunk-2").text("OA 申请也支持移动端提交").score(0.81F).build(),
+                        RetrievedChunk.builder().id("chunk-3").text("HR 系统同步审批状态").score(0.79F).build()
+                ))
+                .intentChunks(Map.of(
+                        "intent-oa", List.of(RetrievedChunk.builder().id("chunk-2").text("OA 申请也支持移动端提交").score(0.81F).build()),
+                        "intent-hr", List.of(RetrievedChunk.builder().id("chunk-3").text("HR 系统同步审批状态").score(0.79F).build())
+                ))
+                .build());
 
-        Map<String, List<RetrievedChunk>> result = retrievalEngine.retrieveKbByIntent(subIntent, 5);
+        SearchChannelResult result = retrievalEngine.search(subIntent, 5);
 
-        assertThat(result).containsKey("intent-oa");
-        assertThat(result.get("intent-oa")).hasSize(1);
-        assertThat(result.get("intent-oa").get(0).getText()).contains("提交审批");
+        assertThat(result.getIntentChunks()).containsKey("intent-oa");
+        assertThat(result.getIntentChunks().get("intent-oa")).hasSize(2);
+        assertThat(result.getIntentChunks().get("intent-oa").get(0).getText()).contains("提交审批");
+        assertThat(result.getIntentChunks()).containsKey("intent-hr");
+        assertThat(result.getRetrievedChunks()).hasSize(3);
     }
 }

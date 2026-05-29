@@ -59,6 +59,7 @@ public class IntentResolver {
         List<SubQuestionIntent> subIntents = tasks.stream()
                 .map(CompletableFuture::join)
                 .toList();
+
         return capTotalIntents(subIntents);
     }
 
@@ -90,6 +91,14 @@ public class IntentResolver {
         if (CollUtil.isEmpty(subIntents)) {
             return List.of();
         }
+        //按照分数从大到小排序
+        subIntents.forEach(subIntent -> {
+            if (CollUtil.isNotEmpty(subIntent.getNodeScores())) {
+                subIntent.getNodeScores().sort(
+                        Comparator.comparing(NodeScore::getScore).reversed()
+                );
+            }
+        });
 
         int totalIntentCount = subIntents.stream()
                 .mapToInt(item -> CollUtil.isEmpty(item.getNodeScores()) ? 0 : item.getNodeScores().size())
