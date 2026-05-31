@@ -22,7 +22,6 @@ import static org.puregxl.site.rag.enums.IntentKind.SYSTEM;
 @Slf4j
 public class IntentResolver {
 
-
     private final IntentClassifier intentClassifier;
 
     private final Executor intentRecognitionExecutor;
@@ -30,7 +29,6 @@ public class IntentResolver {
     private static final Double INTENT_MIN_VALUE = 0.5;
 
     private static final Integer MAX_INTENT_COUNT = 3;
-
 
     /**
      * 调用大模型实现子问题的打分

@@ -82,6 +82,11 @@ public class GlobalVectorSearchChannel implements SearchChannel{
                 .build();
     }
 
+    /**
+     * 判断通道是否启动
+     * @param subIntent 子问题上下文
+     * @return
+     */
     @Override
     public boolean isEnabled(SubQuestionIntent subIntent) {
         return searchChannelProperties.getChannels() != null
