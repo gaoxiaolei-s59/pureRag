@@ -94,15 +94,11 @@ public class RetrievalEngine implements RetrievalService{
 
         List<NodeScore> kb = nodeScoreFilters.kb(subIntent.getNodeScores());
 
-        SearchChannelResult searchResult = multiChannelRetrievalEngine.search(subIntent, TopK);
+        List<RetrievedChunk> search = multiChannelRetrievalEngine.search(subIntent, TopK);
 
-        Map<String, List<RetrievedChunk>> intentChunks = searchResult.getIntentChunks() == null
-                ? Map.of()
-                : searchResult.getIntentChunks();
+        //实现后处理器,进行多通道数据的去重处理，保留高意图节点
 
-        String kbContext = buildKbContext(subIntent.getSubQuestion(), kb, intentChunks, searchResult.getRetrievedChunks());
-        String mcpContext = "";
-        return new SubQuestionContext(subIntent.getSubQuestion(), kbContext, mcpContext, intentChunks);
+        return null;
     }
 
     /**
