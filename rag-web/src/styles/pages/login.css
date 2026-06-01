@@ -1,0 +1,91 @@
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 460px;
+  padding: 26px;
+  gap: 18px;
+}
+
+.login-hero-panel,
+.login-form-panel {
+  border-radius: 28px;
+}
+
+.login-hero-panel {
+  padding: 56px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(32, 83, 216, 0.18), transparent 28%),
+    radial-gradient(circle at 78% 82%, rgba(0, 173, 165, 0.16), transparent 26%),
+    linear-gradient(145deg, #ffffff 0%, #f5f9ff 100%);
+  border: 1px solid rgba(221, 228, 239, 0.86);
+  box-shadow: var(--shadow-soft);
+}
+
+.login-hero-copy h1 {
+  max-width: 680px;
+  margin: 18px 0;
+  font-size: clamp(38px, 4vw, 62px);
+  line-height: 1.08;
+}
+
+.login-hero-copy p {
+  max-width: 640px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.8;
+  font-size: 17px;
+}
+
+.login-feature-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 34px;
+}
+
+.login-feature-list div {
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(221, 228, 239, 0.75);
+}
+
+.login-feature-list strong,
+.login-feature-list span {
+  display: block;
+}
+
+.login-feature-list span {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.login-form-panel {
+  padding: 34px;
+}
+
+.login-form {
+  margin-top: 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.login-divider {
+  margin: 20px 0 12px;
+  text-align: center;
+  color: var(--subtle);
+}
+
+.token-panel {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 980px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero-panel {
+    padding: 32px 24px;
+  }
+}

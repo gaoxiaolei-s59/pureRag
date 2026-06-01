@@ -1,0 +1,102 @@
+.intent-page {
+  gap: 16px;
+}
+
+.intent-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 16px;
+}
+
+.intent-tree {
+  display: grid;
+  gap: 8px;
+}
+
+.intent-tree-node {
+  display: grid;
+  gap: 8px;
+}
+
+.intent-tree-item {
+  width: 100%;
+  min-height: 56px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  text-align: left;
+}
+
+.intent-tree-item.active {
+  border-color: rgba(32, 83, 216, 0.4);
+  background: var(--brand-soft);
+}
+
+.intent-tree-leading {
+  width: 18px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--subtle);
+}
+
+.intent-tree-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--brand);
+}
+
+.intent-tree-main {
+  display: grid;
+  gap: 4px;
+}
+
+.intent-tree-main small {
+  color: var(--subtle);
+}
+
+.intent-detail-card {
+  align-self: start;
+}
+
+.intent-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.intent-detail-head h3 {
+  margin: 8px 0 0;
+  font-size: 24px;
+}
+
+.intent-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.intent-field-row {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+
+.intent-field-row span {
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+@media (max-width: 1100px) {
+  .intent-layout {
+    grid-template-columns: 1fr;
+  }
+}
