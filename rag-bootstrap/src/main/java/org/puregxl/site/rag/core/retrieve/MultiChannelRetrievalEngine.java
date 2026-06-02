@@ -46,7 +46,7 @@ public class MultiChannelRetrievalEngine {
             return List.of();
         }
         List<SearchChannelResult> searchChannelResults = executeSearchChannel(subIntent, defaultTopK);
-        return executePostProcessors(subIntent, defaultTopK, searchChannelResults);
+        return executePostProcessors(subIntent, searchChannelResults);
     }
 
 
@@ -56,7 +56,6 @@ public class MultiChannelRetrievalEngine {
      * 初始 Chunk 顺序来自通道优先级，默认去重会保留优先级更高的结果；随后再交给 rerank 等质量增强处理器。
      */
     private List<RetrievedChunk> executePostProcessors(SubQuestionIntent subIntent,
-                                                       int defaultTopK,
                                                        List<SearchChannelResult> searchChannelResults) {
         List<RetrievedChunk> chunks = mergeRetrievedChunks(searchChannelResults);
         if (chunks.isEmpty()) {

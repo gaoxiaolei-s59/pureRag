@@ -119,10 +119,8 @@ public class GlobalVectorSearchChannel implements SearchChannel{
         return Math.max(defaultTopK, 1) * multiplier;
     }
 
+
     private double confidenceThreshold() {
-        if (searchChannelProperties.getChannels() == null || searchChannelProperties.getChannels().getVectorChannel() == null) {
-            return 1D;
-        }
         return searchChannelProperties.getChannels().getVectorChannel().getConfidenceThreshold();
     }
 
