@@ -1,6 +1,5 @@
 package org.puregxl.site.rag.core.retrieve;
 
-import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -8,9 +7,9 @@ import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
 import org.puregxl.site.rag.core.retrieve.channel.SearchChannel;
 import org.puregxl.site.rag.core.retrieve.channel.SearchChannelResult;
+import org.puregxl.site.rag.core.retrieve.channel.SearchResultPostProcessor;
 import org.springframework.stereotype.Service;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
@@ -35,6 +34,8 @@ public class MultiChannelRetrievalEngine {
 
     private final List<SearchChannel> searchChannels;
 
+    private final List<SearchResultPostProcessor> searchResultPostProcessors;
+
     private final Executor MultiChannelRetrievalexecutor;
 
     /**
@@ -45,22 +46,75 @@ public class MultiChannelRetrievalEngine {
             return List.of();
         }
         List<SearchChannelResult> searchChannelResults = executeSearchChannel(subIntent, defaultTopK);
-
-        return List.of();
+        return executePostProcessors(subIntent, defaultTopK, searchChannelResults);
     }
 
 
+    /**
+     * 多通道结果后处理。
+     * <p>
+     * 初始 Chunk 顺序来自通道优先级，默认去重会保留优先级更高的结果；随后再交给 rerank 等质量增强处理器。
+     */
+    private List<RetrievedChunk> executePostProcessors(SubQuestionIntent subIntent,
+                                                       int defaultTopK,
+                                                       List<SearchChannelResult> searchChannelResults) {
+        List<RetrievedChunk> chunks = mergeRetrievedChunks(searchChannelResults);
+        if (chunks.isEmpty()) {
+            return List.of();
+        }
+
+        List<SearchResultPostProcessor> enabledPostProcessors = safePostProcessors().stream()
+                .filter(Objects::nonNull)
+                .filter(SearchResultPostProcessor::isEnabled)
+                .sorted(Comparator.comparingInt(SearchResultPostProcessor::getOrder))
+                .toList();
+
+        if (enabledPostProcessors.isEmpty()) {
+            log.warn("没有可用的检索后处理器，直接返回原始多通道结果，chunkCount：{}", chunks.size());
+            return chunks;
+        }
+
+        int startChunk = chunks.size();
+        List<RetrievedChunk> processedChunks = chunks;
+        for (SearchResultPostProcessor postProcessor : enabledPostProcessors) {
+            try {
+                processedChunks = postProcessor.process(subIntent.getSubQuestion(), processedChunks, defaultTopK);
+                if (processedChunks == null) {
+                    processedChunks = List.of();
+                }
+                log.info("检索后处理器执行完成，name：{}，chunkCount：{}", postProcessor.getName(), processedChunks.size());
+            } catch (Exception e) {
+                log.error("检索后处理器执行失败，跳过当前处理器，name：{}", postProcessor.getName(), e);
+            }
+        }
+
+        log.info("多通道检索后处理完成，before：{}，after：{}", startChunk, processedChunks.size());
+        return processedChunks;
+    }
+
+    private List<RetrievedChunk> mergeRetrievedChunks(List<SearchChannelResult> searchChannelResults) {
+        if (searchChannelResults == null || searchChannelResults.isEmpty()) {
+            return List.of();
+        }
+        return searchChannelResults.stream()
+                .filter(Objects::nonNull)
+                .flatMap(result -> safeChunks(result).stream())
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
 
     /**
-     * 实现多通道检索 - 最终返回结果
-     * @return
+     * 按通道优先级筛选并并行执行检索通道。
+     * <p>
+     * 单个通道异常会降级为空结果，避免某一路外部检索故障拖垮整次问答。
      */
     private List<SearchChannelResult> executeSearchChannel(SubQuestionIntent subIntent, int defaultTopK) {
-        //过滤 排序
-         List<SearchChannel> enabledSearchChannel = searchChannels.stream()
-                 .filter(searchChannel -> searchChannel.isEnabled(subIntent))
-                 .sorted(Comparator.comparingInt(SearchChannel::priority))
-                 .toList();
+        List<SearchChannel> enabledSearchChannel = safeSearchChannels().stream()
+                .filter(Objects::nonNull)
+                .filter(searchChannel -> isChannelEnabled(searchChannel, subIntent))
+                .sorted(Comparator.comparingInt(searchChannel -> safePriority(searchChannel.priority())))
+                .toList();
 
         if (enabledSearchChannel.isEmpty()) {
             return List.of();
@@ -74,13 +128,14 @@ public class MultiChannelRetrievalEngine {
                 .map(searchChannel -> CompletableFuture.supplyAsync(
                         () -> {
                             try {
-                                return searchChannel.search(subIntent, defaultTopK);
+                                SearchChannelResult result = searchChannel.search(subIntent, defaultTopK);
+                                return result == null ? emptyResult(searchChannel) : result;
                             } catch (Exception e) {
-                                log.error("通道执行失败, name: {}", searchChannel.getName());
-                                return emptyResult();
+                                log.error("通道执行失败，降级为空结果，name：{}", searchChannel.getName(), e);
+                                return emptyResult(searchChannel);
                             }
                         }
-                )).toList();
+                , MultiChannelRetrievalexecutor)).toList();
 
         int successCount = 0;
         int failCount = 0;
@@ -94,13 +149,13 @@ public class MultiChannelRetrievalEngine {
          * 记录条目
          */
         for (SearchChannelResult searchChannelResult : searchChannelResults) {
-            int size = searchChannelResult.getRetrievedChunks().size();
-            successCount += size;
+            int size = safeChunks(searchChannelResult).size();
+            totalChunks += size;
             if (size > 0) {
-                log.info("{}, 成功", searchChannelResult.getChannelName());
+                log.info("{}，成功，chunkCount：{}", searchChannelResult.getChannelName(), size);
                 successCount++;
             } else {
-                log.info("{}, 失败", searchChannelResult.getChannelName());
+                log.info("{}，无结果", searchChannelResult.getChannelName());
                 failCount++;
             }
         }
@@ -111,52 +166,41 @@ public class MultiChannelRetrievalEngine {
         return searchChannelResults;
     }
 
-
-
-    /**
-     * 按优先级执行所有可用通道。
-     * <p>
-     * 这里把“选择哪些通道执行”的逻辑和“怎么合并结果”的逻辑拆开，避免主流程里同时处理两类关注点。
-     */
-    private List<SearchChannelResult> executeEnabledChannels(SubQuestionIntent subIntent, int defaultTopK) {
-        return searchChannels.stream()
-                .sorted(Comparator.comparing(SearchChannel::priority))
-                .filter(Objects::nonNull)
-                .filter(channel -> channel.isEnabled(subIntent))
-                .map(channel -> channel.search(subIntent, defaultTopK))
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    /**
-     * 把单个通道的输出合并到总结果中。
-     * <p>
-     * 这里同时维护两份视图：
-     * 1. 扁平 Chunk 列表：方便全局检索兜底场景直接拼上下文；
-     * 2. 按意图分组结果：方便定向检索按意图构建结构化上下文。
-     */
-    private void mergeChannelResult(SearchChannelResult channelResult,
-                                    List<RetrievedChunk> retrievedChunks,
-                                    Map<String, List<RetrievedChunk>> chunksByIntent) {
-        if (CollUtil.isNotEmpty(channelResult.getRetrievedChunks())) {
-            retrievedChunks.addAll(channelResult.getRetrievedChunks());
+    private boolean isChannelEnabled(SearchChannel searchChannel, SubQuestionIntent subIntent) {
+        try {
+            return searchChannel.isEnabled(subIntent);
+        } catch (Exception e) {
+            log.error("检索通道启用判断失败，跳过该通道，name：{}", searchChannel.getName(), e);
+            return false;
         }
-        if (channelResult.getIntentChunks() == null) {
-            return;
+    }
+
+    private int safePriority(Integer priority) {
+        if (priority == null) {
+            return Integer.MAX_VALUE;
         }
-        channelResult.getIntentChunks().forEach((intentId, chunks) ->
-                chunksByIntent.merge(intentId, chunks, this::mergeChunkLists));
+        return priority;
     }
 
-    private List<RetrievedChunk> mergeChunkLists(List<RetrievedChunk> existing, List<RetrievedChunk> incoming) {
-        List<RetrievedChunk> merged = new ArrayList<>(existing);
-        merged.addAll(incoming);
-        return merged;
+    private List<SearchChannel> safeSearchChannels() {
+        return searchChannels == null ? List.of() : searchChannels;
     }
 
-    private SearchChannelResult emptyResult() {
+    private List<SearchResultPostProcessor> safePostProcessors() {
+        return searchResultPostProcessors == null ? List.of() : searchResultPostProcessors;
+    }
+
+    private List<RetrievedChunk> safeChunks(SearchChannelResult searchChannelResult) {
+        if (searchChannelResult == null || searchChannelResult.getRetrievedChunks() == null) {
+            return List.of();
+        }
+        return searchChannelResult.getRetrievedChunks();
+    }
+
+    private SearchChannelResult emptyResult(SearchChannel searchChannel) {
         return SearchChannelResult.builder()
-                .channelName(MULTI_CHANNEL_SEARCH_NAME)
+                .searchChannelType(searchChannel == null ? null : searchChannel.getType())
+                .channelName(searchChannel == null ? MULTI_CHANNEL_SEARCH_NAME : searchChannel.getName())
                 .retrievedChunks(List.of())
                 .intentChunks(Map.of())
                 .build();

@@ -1,4 +1,4 @@
-package org.puregxl.site.mcp;
+package org.puregxl.site.mcp.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.puregxl.site.mcp.dao.entity.ResumeEntity;
@@ -17,6 +17,7 @@ import java.util.Set;
 public class RagToolService {
 
     private final ResumeMapper resumeMapper;
+
 
     public RagToolService(ResumeMapper resumeMapper) {
         this.resumeMapper = resumeMapper;
@@ -120,6 +121,11 @@ public class RagToolService {
         }
         return Math.min(topK, 10);
     }
+
+
+
+
+
 
     private static SearchResult toSearchResult(KnowledgeDocument document, List<String> queryTerms) {
         String haystack = (document.title() + " " + document.content()).toLowerCase(Locale.ROOT);

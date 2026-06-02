@@ -1,6 +1,7 @@
 package org.puregxl.site.mcp;
 
 import org.mybatis.spring.annotation.MapperScan;
+import org.puregxl.site.mcp.service.RagToolService;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.boot.SpringApplication;

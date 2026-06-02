@@ -8,7 +8,6 @@ import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.NodeScoreFilters;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
-import org.puregxl.site.rag.core.retrieve.channel.SearchChannelResult;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -89,16 +88,35 @@ public class RetrievalEngine implements RetrievalService{
      * @return
      */
     private SubQuestionContext buildSubQuestionContext(SubQuestionIntent subIntent, int TopK) {
+        if (subIntent == null || StrUtil.isBlank(subIntent.getSubQuestion())) {
+            return new SubQuestionContext("", "", "", Map.of());
+        }
+        List<NodeScore> nodeScores = CollUtil.isEmpty(subIntent.getNodeScores()) ? List.of() : subIntent.getNodeScores();
 
-        List<NodeScore> mcp = nodeScoreFilters.mcp(subIntent.getNodeScores());
+        List<NodeScore> mcp = nodeScoreFilters.mcp(nodeScores);
 
-        List<NodeScore> kb = nodeScoreFilters.kb(subIntent.getNodeScores());
+        List<NodeScore> kb = nodeScoreFilters.kb(nodeScores);
 
         List<RetrievedChunk> search = multiChannelRetrievalEngine.search(subIntent, TopK);
 
-        //实现后处理器,进行多通道数据的去重处理，保留高意图节点
+        String mcpContext = CollUtil.isEmpty(mcp) ? "" : executeMcpAndMerge(subIntent.getSubQuestion(), mcp);
+        String kbContext = buildKbContext(subIntent.getSubQuestion(), kb, Map.of(), search);
 
-        return null;
+        return new SubQuestionContext(subIntent.getSubQuestion(), kbContext, mcpContext, Map.of());
+    }
+
+    /**
+     * 调用MCP工具
+     * @param subQuestion
+     * @param mcp
+     * @return
+     */
+    private String executeMcpAndMerge(String subQuestion, List<NodeScore> mcp) {
+        // MCP 工具调用链路当前还没有接入具体 Tool Dispatcher。
+        // 这里保留上下文构建边界，避免 MCP 意图影响 KB 检索主流程。
+        log.warn("MCP 意图已识别但工具调用链路尚未接入，subQuestion：{}，mcpCount：{}",
+                subQuestion, CollUtil.isEmpty(mcp) ? 0 : mcp.size());
+        return "";
     }
 
     /**
