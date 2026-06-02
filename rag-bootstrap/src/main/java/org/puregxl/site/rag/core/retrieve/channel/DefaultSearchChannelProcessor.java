@@ -32,7 +32,7 @@ public class DefaultSearchChannelProcessor implements SearchResultPostProcessor{
     }
 
     @Override
-    public List<RetrievedChunk> process(String query, List<RetrievedChunk> chunks, int topK) {
+    public List<RetrievedChunk> process(String query, List<RetrievedChunk> chunks) {
         if (CollUtil.isEmpty(chunks)) {
             return List.of();
         }

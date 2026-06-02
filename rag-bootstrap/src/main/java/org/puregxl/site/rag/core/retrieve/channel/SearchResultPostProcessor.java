@@ -31,8 +31,7 @@ public interface SearchResultPostProcessor {
      *
      * @param query 本次子问题原文，供 rerank 等语义处理器使用
      * @param chunks 上游通道或处理器输出的 Chunk 列表
-     * @param topK 最终期望保留的 Chunk 数量
      * @return 当前处理器输出的 Chunk 列表
      */
-    List<RetrievedChunk> process(String query, List<RetrievedChunk> chunks, int topK);
+    List<RetrievedChunk> process(String query, List<RetrievedChunk> chunks);
 }

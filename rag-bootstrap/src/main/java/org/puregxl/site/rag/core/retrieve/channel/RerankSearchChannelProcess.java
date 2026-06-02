@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.infra.rerank.RerankService;
+import org.puregxl.site.rag.config.RAGDefaultProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -19,6 +20,8 @@ import java.util.List;
 public class RerankSearchChannelProcess implements SearchResultPostProcessor{
 
     private final RerankService rerankService;
+
+    private final RAGDefaultProperties ragDefaultProperties;
 
     @Override
     public String getName() {
@@ -36,11 +39,11 @@ public class RerankSearchChannelProcess implements SearchResultPostProcessor{
     }
 
     @Override
-    public List<RetrievedChunk> process(String query, List<RetrievedChunk> chunks, int topK) {
+    public List<RetrievedChunk> process(String query, List<RetrievedChunk> chunks) {
         if (CollUtil.isEmpty(chunks)) {
             return List.of();
         }
-        int safeTopK = resolveTopK(chunks, topK);
+        int safeTopK = resolveTopK(chunks, ragDefaultProperties.getRetrieveTopK());
         if (StrUtil.isBlank(query)) {
             return chunks.stream().limit(safeTopK).toList();
         }

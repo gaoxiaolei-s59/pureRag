@@ -78,7 +78,7 @@ public class MultiChannelRetrievalEngine {
         List<RetrievedChunk> processedChunks = chunks;
         for (SearchResultPostProcessor postProcessor : enabledPostProcessors) {
             try {
-                processedChunks = postProcessor.process(subIntent.getSubQuestion(), processedChunks, defaultTopK);
+                processedChunks = postProcessor.process(subIntent.getSubQuestion(), processedChunks);
                 if (processedChunks == null) {
                     processedChunks = List.of();
                 }

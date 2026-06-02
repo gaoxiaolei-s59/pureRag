@@ -2,6 +2,7 @@ package org.puregxl.site.rag.core.retrieve;
 
 import org.junit.jupiter.api.Test;
 import org.puregxl.site.infra.framework.convention.RetrievedChunk;
+import org.puregxl.site.rag.config.RAGDefaultProperties;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
 import org.puregxl.site.rag.core.retrieve.channel.DefaultSearchChannelProcessor;
 import org.puregxl.site.rag.core.retrieve.channel.RerankSearchChannelProcess;
@@ -27,9 +28,10 @@ class MultiChannelRetrievalEngineTest {
         SearchChannel globalChannel = mock(SearchChannel.class);
         SearchChannel disabledChannel = mock(SearchChannel.class);
         RerankService rerankService = mock(RerankService.class);
+        RAGDefaultProperties ragDefaultProperties = mock(RAGDefaultProperties.class);
         MultiChannelRetrievalEngine retrievalEngine = new MultiChannelRetrievalEngine(
                 List.of(globalChannel, disabledChannel, intentChannel),
-                List.of(new DefaultSearchChannelProcessor(), new RerankSearchChannelProcess(rerankService)),
+                List.of(new DefaultSearchChannelProcessor(), new RerankSearchChannelProcess(rerankService, ragDefaultProperties)),
                 Runnable::run
         );
         SubQuestionIntent subIntent = new SubQuestionIntent("OA 怎么申请", List.of());
