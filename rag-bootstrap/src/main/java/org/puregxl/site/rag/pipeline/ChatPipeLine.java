@@ -4,7 +4,6 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.puregxl.site.rag.config.RAGDefaultProperties;
 import org.puregxl.site.rag.config.SearchChannelProperties;
 import org.puregxl.site.rag.core.intent.IntentResolver;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
@@ -12,22 +11,17 @@ import org.puregxl.site.rag.core.retrieve.RetrievalContext;
 import org.puregxl.site.rag.core.retrieve.RetrievalEngine;
 import org.puregxl.site.rag.core.rewrite.QueryRewriteService;
 import org.puregxl.site.rag.core.rewrite.RewriteResult;
-import org.puregxl.site.rag.retrieval.RagRetrievalService;
 import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.infra.chat.LLMService;
 import org.puregxl.site.infra.chat.StreamCancellationHandle;
-import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
-import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.rag.service.MemoryService;
 import org.puregxl.site.rag.support.PromptTemplateLoader;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -38,10 +32,7 @@ public class ChatPipeLine {
     private static final int REWRITE_HISTORY_TURNS = 4;
     private static final String SYSTEM_PROMPT_RESOURCE_PATH = "prompt/rag-system-prompt.txt";
 
-    private final EmbeddingService embeddingService;
-    private final RagRetrievalService retrievalService;
     private final LLMService llmService;
-    private final RAGDefaultProperties ragDefaultProperties;
     private final MemoryService memoryService;
     private final QueryRewriteService queryRewriteService;
     private final PromptTemplateLoader promptTemplateLoader;
@@ -52,8 +43,9 @@ public class ChatPipeLine {
     /**
      * 执行一次基础 RAG 流式问答。
      * <p>
-     * 主流程分为四步：先对用户问题向量化，再到默认 Collection 召回候选 Chunk，随后用 rerank
-     * 压缩成少量高相关上下文，最后把上下文和用户问题组装为 ChatRequest 交给大模型流式输出。
+     * 主流程先加载记忆、改写问题并解析意图；如果本轮全部是 SYSTEM 意图，则直接调用模型。
+     * 否则统一进入 RetrievalEngine，由它负责多通道检索、去重、rerank 和 MCP 上下文编排，
+     * ChatPipeLine 只把最终上下文组装进系统 Prompt 后交给大模型流式输出。
      */
     public StreamCancellationHandle execute(StreamChatContext context) {
 
@@ -79,22 +71,15 @@ public class ChatPipeLine {
             return systemOnlyHandle;
         }
 
-        // 5.发起调用
+        // 5.非 SYSTEM 问题统一进入多通道检索链路，避免继续走旧的默认 Collection 单路检索。
         String question = context.getQuestion().trim();
-        String retrievalQuestion = resolveRetrievalQuestion(context, question);
+        RetrievalContext retrievalContext = retrieval(context);
+        ChatRequest request = buildChatRequest(question, retrievalContext, memoryMessages, context.isDeepThinking());
 
-        List<Float> queryEmbedding = embeddingService.embed(retrievalQuestion);
-
-        List<RetrievedChunk> candidates = retrievalService.searchSimilarChunks(
-                ragDefaultProperties.getCollectionName(),
-                queryEmbedding,
-                safePositive(ragDefaultProperties.getRetrieveTopK(), 8));
-
-//        List<RetrievedChunk> contextChunks = rerank(question, candidates);
-        ChatRequest request = buildChatRequest(question, candidates, memoryMessages, context.isDeepThinking());
-
-        log.info("[RAG问答] 开始流式生成，taskId={}, conversationId={}, retrieveCount={}, contextCount={}",
-                context.getTaskId(), context.getConversationId(), candidates.size(), candidates.size());
+        log.info("[RAG问答] 开始流式生成，taskId={}, conversationId={}, hasKb={}, hasMcp={}",
+                context.getTaskId(), context.getConversationId(),
+                retrievalContext != null && retrievalContext.hasKb(),
+                retrievalContext != null && retrievalContext.hasMcp());
         return llmService.streamChat(request, context.getCallback());
     }
 
@@ -122,16 +107,17 @@ public class ChatPipeLine {
 
 
     /**
-     * 构建请求
-     * @param question
-     * @param contextChunks
-     * @param memoryMessages
-     * @param deepThinking
-     * @return
+     * 构建带检索上下文的大模型请求。
+     * <p>
+     * RetrievalContext 中的 KB/MCP 内容已经是上游编排后的最终文本，
+     * 这里不再重新理解来源，只负责按 Prompt 模板注入。
      */
-    private ChatRequest buildChatRequest(String question, List<RetrievedChunk> contextChunks, List<ChatMessage> memoryMessages, boolean deepThinking) {
+    private ChatRequest buildChatRequest(String question,
+                                         RetrievalContext retrievalContext,
+                                         List<ChatMessage> memoryMessages,
+                                         boolean deepThinking) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(buildSystemPrompt(contextChunks)));
+        messages.add(ChatMessage.system(buildSystemPrompt(retrievalContext)));
         if (CollUtil.isNotEmpty(memoryMessages)) {
             messages.addAll(memoryMessages);
         }
@@ -228,25 +214,23 @@ public class ChatPipeLine {
         return conversationalHistory.subList(conversationalHistory.size() - keepMessages, conversationalHistory.size());
     }
 
-    private String resolveRetrievalQuestion(StreamChatContext context, String originalQuestion) {
-        RewriteResult rewriteResult = context.getRewriteResult();
-        if (rewriteResult == null || StrUtil.isBlank(rewriteResult.getRewrittenQuestion())) {
-            return originalQuestion;
-        }
-        return rewriteResult.getRewrittenQuestion().trim();
-    }
-
-    private String buildSystemPrompt(List<RetrievedChunk> contextChunks) {
-        String contextText = CollUtil.isEmpty(contextChunks)
-                ? "未检索到可用知识库片段。"
-                : IntStream.range(0, contextChunks.size())
-                .mapToObj(i -> "[" + (i + 1) + "] " + StrUtil.blankToDefault(contextChunks.get(i).getText(), ""))
-                .collect(Collectors.joining("\n\n"));
+    private String buildSystemPrompt(RetrievalContext retrievalContext) {
         return promptTemplateLoader.load(SYSTEM_PROMPT_RESOURCE_PATH)
-                .replace("{{context}}", contextText);
+                .replace("{{context}}", buildRetrievalContextText(retrievalContext));
     }
 
-    private int safePositive(Integer value, int fallback) {
-        return value == null || value <= 0 ? fallback : value;
+    private String buildRetrievalContextText(RetrievalContext retrievalContext) {
+        if (retrievalContext == null || retrievalContext.isEmpty()) {
+            return "未检索到可用知识库片段。";
+        }
+
+        List<String> contexts = new ArrayList<>();
+        if (retrievalContext.hasKb()) {
+            contexts.add(retrievalContext.getKbContext().trim());
+        }
+        if (retrievalContext.hasMcp()) {
+            contexts.add(retrievalContext.getMcpContext().trim());
+        }
+        return contexts.isEmpty() ? "未检索到可用知识库片段。" : String.join("\n\n", contexts);
     }
 }

@@ -2,7 +2,6 @@ import {
   Database,
   FileText,
   FolderOpen,
-  Layers3,
   Pencil,
   Plus,
   RefreshCw,
@@ -141,56 +140,55 @@ export function KnowledgePage() {
         <StatCard icon={<Database size={20} />} label="知识库" value={bases.length} />
         <StatCard icon={<FileText size={20} />} label="文档数" value={bases.reduce((sum, item) => sum + (item.documentCount ?? 0), 0)} />
         <StatCard icon={<FolderOpen size={20} />} label="含文档知识库" value={bases.filter((item) => (item.documentCount ?? 0) > 0).length} />
-        <StatCard icon={<Layers3 size={20} />} label="负责人数量" value={new Set(bases.map((item) => item.createdBy).filter(Boolean)).size} />
       </section>
 
       <section className="data-card">
-        <div className="table-grid knowledge-grid table-header">
-          <span>名称</span>
-          <span>Embedding 模型</span>
-          <span>Collection</span>
-          <span>文档数</span>
-          <span>负责人</span>
-          <span>创建时间</span>
-          <span>更新时间</span>
-          <span>操作</span>
+        <div className="knowledge-table-scroll">
+          <div className="table-grid knowledge-grid table-header">
+            <span>名称</span>
+            <span>Embedding 模型</span>
+            <span>Collection</span>
+            <span>文档数</span>
+            <span>创建时间</span>
+            <span>更新时间</span>
+            <span>操作</span>
+          </div>
+          {filteredBases.length ? (
+            filteredBases.map((kb) => (
+              <div className="table-grid knowledge-grid table-row" key={kb.id}>
+                <span className="cell-strong" title={kb.name}>{kb.name}</span>
+                <span className="cell-muted" title={kb.embeddingModel}>{kb.embeddingModel}</span>
+                <span className="cell-code" title={kb.collectionName}>{kb.collectionName}</span>
+                <span>{kb.documentCount ?? 0}</span>
+                <span>{formatDateTime(kb.createTime)}</span>
+                <span>{formatDateTime(kb.updateTime)}</span>
+                <span className="row-actions">
+                  <button type="button" className="outline-button small" onClick={() => navigate(`/knowledge/${kb.id}/docs`)}>
+                    文档
+                  </button>
+                  <button
+                    type="button"
+                    className="outline-button small"
+                    onClick={() => {
+                      setSelectedKb(kb);
+                      setEditKbName(kb.name);
+                      setEditOpen(true);
+                    }}
+                  >
+                    <Pencil size={14} />
+                    编辑
+                  </button>
+                  <button type="button" className="outline-button small danger-text" onClick={() => void handleDeleteKb(kb)}>
+                    <Trash2 size={14} />
+                    删除
+                  </button>
+                </span>
+              </div>
+            ))
+          ) : (
+            <EmptyState title="暂无知识库" description="可以先创建一个知识库开始整理文档。" />
+          )}
         </div>
-        {filteredBases.length ? (
-          filteredBases.map((kb) => (
-            <div className="table-grid knowledge-grid table-row" key={kb.id}>
-              <span>{kb.name}</span>
-              <span>{kb.embeddingModel}</span>
-              <span>{kb.collectionName}</span>
-              <span>{kb.documentCount ?? 0}</span>
-              <span>{kb.createdBy || "-"}</span>
-              <span>{formatDateTime(kb.createTime)}</span>
-              <span>{formatDateTime(kb.updateTime)}</span>
-              <span className="row-actions">
-                <button type="button" className="outline-button small" onClick={() => navigate(`/knowledge/${kb.id}/docs`)}>
-                  文档
-                </button>
-                <button
-                  type="button"
-                  className="outline-button small"
-                  onClick={() => {
-                    setSelectedKb(kb);
-                    setEditKbName(kb.name);
-                    setEditOpen(true);
-                  }}
-                >
-                  <Pencil size={14} />
-                  编辑
-                </button>
-                <button type="button" className="outline-button small danger-text" onClick={() => void handleDeleteKb(kb)}>
-                  <Trash2 size={14} />
-                  删除
-                </button>
-              </span>
-            </div>
-          ))
-        ) : (
-          <EmptyState title="暂无知识库" description="可以先创建一个知识库开始整理文档。" />
-        )}
       </section>
 
       {createOpen ? (

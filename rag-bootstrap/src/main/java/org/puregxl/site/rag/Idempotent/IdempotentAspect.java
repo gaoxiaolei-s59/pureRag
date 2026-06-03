@@ -57,12 +57,7 @@ public class IdempotentAspect {
         return result;
     }
 
-    /**
-     * 解析提交幂等业务 Key。
-     * <p>
-     * Web 接口通常需要把请求参数拼进幂等 Key，例如 RAG 流式问答需要按问题、会话和思考模式区分请求。
-     * 这里统一支持 SpEL，避免注解里写了 #userQuestion 但实际按字面量加锁，导致所有请求互相阻塞。
-     */
+
     private String resolveBusinessKey(ProceedingJoinPoint joinPoint, String keyExpression) {
         if (StrUtil.isBlank(keyExpression)) {
             return null;
@@ -71,11 +66,7 @@ public class IdempotentAspect {
         return value == null ? null : String.valueOf(value);
     }
 
-    /**
-     * 使用 Spring SpEL 解析方法参数。
-     * <p>
-     * 支持参数名、#p0/#a0 和 #args 写法；如果 key 不包含 SpEL 变量或字符串表达式，则按普通固定 Key 处理。
-     */
+
     private Object parseExpression(ProceedingJoinPoint joinPoint, String keyExpression) {
         if (!keyExpression.contains("#") && !keyExpression.contains("'")) {
             return keyExpression;

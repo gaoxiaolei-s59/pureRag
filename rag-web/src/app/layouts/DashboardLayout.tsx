@@ -3,9 +3,12 @@ import {
   Database,
   Layers3,
   LogOut,
-  MessageSquare
+  MessageSquare,
+  Moon,
+  Sun
 } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useAppTheme } from "../theme";
 import { useAuthGuard } from "../../hooks/useAuthGuard";
 import { clearAuthStorage, getStoredUserName } from "../../modules/auth/storage";
 import { logout } from "../../modules/auth/services/auth";
@@ -14,6 +17,7 @@ export function DashboardLayout() {
   const { isAuthenticated } = useAuthGuard();
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, isDarkTheme, toggleTheme } = useAppTheme();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -30,7 +34,7 @@ export function DashboardLayout() {
   }
 
   return (
-    <main className="dashboard-shell">
+    <main className="dashboard-shell" data-theme={theme}>
       <aside className="dashboard-sidebar">
         <div className="brand-block">
           <div className="brand-mark">
@@ -80,6 +84,15 @@ export function DashboardLayout() {
               <MessageSquare size={16} />
               返回聊天
             </NavLink>
+            <button
+              type="button"
+              className="outline-button theme-admin-button"
+              aria-label={isDarkTheme ? "切换浅色模式" : "切换深色模式"}
+              title={isDarkTheme ? "切换浅色模式" : "切换深色模式"}
+              onClick={toggleTheme}
+            >
+              {isDarkTheme ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
             <div className="user-pill">{getStoredUserName()}</div>
           </div>
         </header>

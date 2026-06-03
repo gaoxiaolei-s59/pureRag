@@ -95,12 +95,11 @@ public class RetrievalEngine implements RetrievalService{
 
         List<NodeScore> mcp = nodeScoreFilters.mcp(nodeScores);
 
-        List<NodeScore> kb = nodeScoreFilters.kb(nodeScores);
-
         List<RetrievedChunk> search = multiChannelRetrievalEngine.search(subIntent, TopK);
 
         String mcpContext = CollUtil.isEmpty(mcp) ? "" : executeMcpAndMerge(subIntent.getSubQuestion(), mcp);
-        String kbContext = buildKbContext(subIntent.getSubQuestion(), kb, Map.of(), search);
+
+        String kbContext = buildKbContext(subIntent.getSubQuestion(), search);
 
         return new SubQuestionContext(subIntent.getSubQuestion(), kbContext, mcpContext, Map.of());
     }
@@ -122,67 +121,25 @@ public class RetrievalEngine implements RetrievalService{
     /**
      * 构建单个子问题的 KB 文本上下文。
      * <p>
-     * 这里保留“子问题 -> 意图 -> 片段”三级结构，后续喂给大模型时更容易追溯每段知识来自哪个命中意图。
+     * 多通道检索引擎返回的 Chunk 已经经过通道合并、去重和 rerank，
+     * 到这里就是最终准备喂给大模型的知识片段，因此只保留稳定、简洁的 Prompt 格式。
      */
-    private String buildKbContext(String question,
-                                  List<NodeScore> kbNodeScores,
-                                  Map<String, List<RetrievedChunk>> intentChunks,
-                                  List<RetrievedChunk> retrievedChunks) {
-        if (StrUtil.isBlank(question)) {
+    private String buildKbContext(String question, List<RetrievedChunk> retrievedChunks) {
+        if (StrUtil.isBlank(question) || CollUtil.isEmpty(retrievedChunks)) {
             return "";
         }
 
         StringBuilder builder = new StringBuilder();
         builder.append("子问题：").append(question.trim());
-        boolean appended = false;
-
-        if (CollUtil.isNotEmpty(kbNodeScores) && CollUtil.isNotEmpty(intentChunks)) {
-            for (NodeScore kbNodeScore : kbNodeScores) {
-                if (kbNodeScore == null || kbNodeScore.getIntentNode() == null) {
-                    continue;
-                }
-                String intentId = kbNodeScore.getIntentNode().getId();
-                List<RetrievedChunk> chunks = intentChunks.get(intentId);
-                if (CollUtil.isEmpty(chunks)) {
-                    continue;
-                }
-
-                appended = true;
-                builder.append("\n知识意图：").append(resolveIntentLabel(kbNodeScore));
-                for (int index = 0; index < chunks.size(); index++) {
-                    builder.append("\n").append(index + 1).append(". ").append(chunks.get(index).getText());
-                }
+        builder.append("\n知识库检索结果：");
+        int displayIndex = 1;
+        for (RetrievedChunk retrievedChunk : retrievedChunks) {
+            if (retrievedChunk == null || StrUtil.isBlank(retrievedChunk.getText())) {
+                continue;
             }
+            builder.append("\n").append(displayIndex++).append(". ").append(retrievedChunk.getText().trim());
         }
-
-        if (!appended && CollUtil.isNotEmpty(retrievedChunks)) {
-            builder.append("\n全局向量检索结果：");
-            for (int index = 0; index < retrievedChunks.size(); index++) {
-                builder.append("\n").append(index + 1).append(". ").append(retrievedChunks.get(index).getText());
-            }
-            appended = true;
-        }
-        return appended ? builder.toString() : "";
-    }
-
-    private String resolveIntentLabel(NodeScore kbNodeScore) {
-        if (StrUtil.isNotBlank(kbNodeScore.getIntentNode().getFullPath())) {
-            return kbNodeScore.getIntentNode().getFullPath();
-        }
-        if (StrUtil.isNotBlank(kbNodeScore.getIntentNode().getName())) {
-            return kbNodeScore.getIntentNode().getName();
-        }
-        return kbNodeScore.getIntentNode().getId();
-    }
-
-    /**
-     * 基于过滤后的节点分数重建一个子问题意图，只保留当前通道真正可消费的节点。
-     */
-    private SubQuestionIntent rebuildSubIntent(SubQuestionIntent source, List<NodeScore> filteredNodeScores) {
-        if (CollUtil.isEmpty(filteredNodeScores)) {
-            return null;
-        }
-        return new SubQuestionIntent(source.getSubQuestion(), filteredNodeScores);
+        return displayIndex > 1 ? builder.toString() : "";
     }
 
     private record SubQuestionContext(String question,

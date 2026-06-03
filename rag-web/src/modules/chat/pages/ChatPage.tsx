@@ -1,15 +1,16 @@
 import {
+  Atom,
   Bot,
   Brain,
-  CheckCircle2,
   Copy,
-  FileText,
-  Github,
-  Lightbulb,
+  Database,
   Loader2,
   LogOut,
   MessageSquare,
   MessageSquareText,
+  Moon,
+  PanelLeft,
+  Paperclip,
   Pencil,
   Plus,
   RefreshCw,
@@ -17,42 +18,26 @@ import {
   Search,
   Send,
   Settings,
+  Sun,
   ThumbsDown,
-  ThumbsUp
+  ThumbsUp,
+  UploadCloud
 } from "lucide-react";
-import { FormEvent, KeyboardEvent, useEffect, useMemo } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { useAppTheme } from "../../../app/theme";
 import { useAuthGuard } from "../../../hooks/useAuthGuard";
 import { clearAuthStorage, getStoredUserName } from "../../auth/storage";
 import { logout } from "../../auth/services/auth";
 import { useChatPage } from "../hooks/useChatPage";
-
-const CHAT_STARTERS = [
-  {
-    icon: <FileText size={18} />,
-    title: "内容总结",
-    description: "提炼 3-5 条关键信息与行动点",
-    prompt: "请帮我总结以下内容，并列出关键结论和下一步行动。"
-  },
-  {
-    icon: <CheckCircle2 size={18} />,
-    title: "任务拆解",
-    description: "把目标拆成可执行步骤与优先级",
-    prompt: "请把下面需求拆解为步骤，按优先级输出可执行计划。"
-  },
-  {
-    icon: <Lightbulb size={18} />,
-    title: "灵感扩展",
-    description: "给出多种方案并比较优缺点",
-    prompt: "请围绕这个主题给出多个方案，并比较各自优缺点。"
-  }
-];
 
 export function ChatPage() {
   const { isAuthenticated } = useAuthGuard();
   const navigate = useNavigate();
   const chat = useChatPage();
   const userName = getStoredUserName();
+  const { theme, isDarkTheme, toggleTheme } = useAppTheme();
+  const [smartSearch, setSmartSearch] = useState(false);
 
   useEffect(() => {
     void chat.refreshConversations();
@@ -85,51 +70,31 @@ export function ChatPage() {
     await chat.sendMessage();
   }
 
-  const activeConversationTitle = useMemo(
-    () => chat.conversations.find((item) => item.id === chat.conversationId)?.title || "新对话",
-    [chat.conversationId, chat.conversations]
-  );
-
   const userInitial = userName.slice(0, 1).toUpperCase() || "A";
 
   return (
-    <main className="chat-shell">
+    <main className="chat-shell" data-theme={theme}>
       <aside className="chat-sidebar">
         <div className="chat-brand">
           <div className="chat-brand-mark">
-            <Bot size={22} />
+            <Bot size={24} />
           </div>
-          <div>
-            <strong>PureAgent 智能体</strong>
-            <span>Powered by AI</span>
+          <strong>PureAgent</strong>
+          <div className="chat-sidebar-tools">
+            <button type="button" aria-label="搜索对话">
+              <Search size={20} />
+            </button>
+            <button type="button" aria-label="折叠侧边栏">
+              <PanelLeft size={20} />
+            </button>
           </div>
         </div>
 
-        <section className="quick-card">
-          <div className="quick-card-head">
-            <span>快速开始</span>
-            <b>新内容</b>
-          </div>
-          <button type="button" className="new-chat-card" onClick={chat.newConversation}>
-            <span className="plus-cube">
-              <Plus size={20} />
-            </span>
-            <span>
-              <strong>新建对话</strong>
-              <small>从空白开始</small>
-            </span>
-          </button>
-          <button type="button" className="mini-pill" onClick={() => navigate("/knowledge")}>
-            <Settings size={16} />
-            管理后台
-          </button>
-        </section>
-
         <section className="search-card">
-          <div className="search-card-head">
-            <span>搜索对话</span>
-            <small>Ctrl / Cmd + K</small>
-          </div>
+          <button type="button" className="new-chat-card" onClick={chat.newConversation}>
+            <Plus size={20} />
+            开启新对话
+          </button>
           <label className="soft-search">
             <Search size={18} />
             <input
@@ -138,6 +103,10 @@ export function ChatPage() {
               placeholder="搜索对话..."
             />
           </label>
+          <button type="button" className="mini-pill" onClick={() => navigate("/knowledge")}>
+            <Settings size={16} />
+            管理后台
+          </button>
         </section>
 
         {chat.filteredConversations.length ? (
@@ -186,27 +155,43 @@ export function ChatPage() {
 
       <section className="chat-main">
         <header className="chat-topbar">
-          <strong>{activeConversationTitle}</strong>
-          <button type="button" className="star-button">
-            <Github size={18} />
-            Star
-            <span>--</span>
-          </button>
+          <span />
+          <div className="chat-topbar-actions">
+            <button type="button" className="upload-button">
+              <UploadCloud size={20} />
+              拖拽至此上传
+            </button>
+            <button
+              type="button"
+              className="theme-toggle-button"
+              aria-label={isDarkTheme ? "切换浅色模式" : "切换深色模式"}
+              title={isDarkTheme ? "切换浅色模式" : "切换深色模式"}
+              onClick={toggleTheme}
+            >
+              {isDarkTheme ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
         </header>
 
         <div className="chat-workspace">
           <section className={`conversation-stream ${chat.messages.length === 0 ? "empty" : ""}`}>
             {chat.messages.length === 0 ? (
               <div className="chat-landing">
-                <div className="chat-landing-badge">
-                  <Bot size={16} />
-                  <span>PureAgent 智能问答</span>
+                <div className="chat-landing-mark">
+                  <Bot size={34} />
                 </div>
-                <h1>
-                  把问题变成
-                  <span>清晰答案</span>
-                </h1>
-                <p>结构化提问、知识检索与深度思考，一次对话给出可执行方案</p>
+                <h1>PureAgent 知识问答</h1>
+                <p>连接知识库、意图识别与深度检索，把项目资料变成可追问的答案。</p>
+                <div className="chat-landing-meta" aria-label="项目能力">
+                  <span>
+                    <Database size={15} />
+                    知识库增强
+                  </span>
+                  <span>
+                    <Brain size={15} />
+                    深度思考
+                  </span>
+                </div>
               </div>
             ) : (
               chat.messages.map((message, index) => (
@@ -282,25 +267,37 @@ export function ChatPage() {
               value={chat.question}
               onChange={(event) => chat.setQuestion(event.target.value)}
               onKeyDown={handlePromptKeyDown}
-              placeholder="输入你的问题..."
+              placeholder="给 PureAgent 发送消息"
               rows={4}
             />
             <div className="composer-actions">
-              <label className="thinking-pill">
-                <input
-                  type="checkbox"
-                  checked={chat.deepThinking}
-                  onChange={(event) => chat.setDeepThinking(event.target.checked)}
-                />
+              <button
+                type="button"
+                className={`thinking-pill ${chat.deepThinking ? "active" : "inactive"}`}
+                aria-pressed={chat.deepThinking}
+                onClick={() => chat.setDeepThinking(!chat.deepThinking)}
+              >
                 <Brain size={16} />
                 深度思考
-              </label>
+              </button>
+              <button
+                type="button"
+                className={`thinking-pill ${smartSearch ? "active" : "inactive"}`}
+                aria-pressed={smartSearch}
+                onClick={() => setSmartSearch((current) => !current)}
+              >
+                <Atom size={16} />
+                智能搜索
+              </button>
               <div className="composer-actions-right">
                 {chat.chatLoading ? (
                   <button type="button" className="ghost-button small" onClick={() => void chat.stopChat()}>
                     停止生成
                   </button>
                 ) : null}
+                <button type="button" className="icon-tool-button" aria-label="添加附件">
+                  <Paperclip size={20} />
+                </button>
                 <button type="submit" className="send-button" aria-label="发送" disabled={chat.chatLoading}>
                   {chat.chatLoading ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
                 </button>
@@ -311,31 +308,6 @@ export function ChatPage() {
           <div className="composer-hint">
             <kbd>Enter</kbd> 发送 · <kbd>Shift + Enter</kbd> 换行
           </div>
-
-          {chat.messages.length === 0 ? (
-            <section className="chat-launchpad">
-              <div className="chat-launchpad-head">
-                <span>试试这些开场</span>
-              </div>
-              <div className="chat-launchpad-grid">
-                {CHAT_STARTERS.map((starter) => (
-                  <button
-                    type="button"
-                    key={starter.title}
-                    className="chat-launch-card"
-                    onClick={() => chat.setQuestion(starter.prompt)}
-                  >
-                    <div className="chat-launch-card-icon">{starter.icon}</div>
-                    <div className="chat-launch-card-copy">
-                      <strong>{starter.title}</strong>
-                      <p>{starter.description}</p>
-                      <small>推荐问法：{starter.prompt}</small>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
         </div>
       </section>
     </main>

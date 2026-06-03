@@ -1,7 +1,47 @@
 .dashboard-shell {
+  --bg: #f3f5f9;
+  --bg-soft: #eef2f8;
+  --surface: #ffffff;
+  --surface-muted: rgba(255, 255, 255, 0.7);
+  --text: #162033;
+  --muted: #5f6b81;
+  --subtle: #8b95a7;
+  --line: #dde4ef;
+  --brand: #2053d8;
+  --brand-strong: #123a9c;
+  --brand-soft: #e8efff;
+  --danger: #cc3d4f;
+  --success: #0b8f63;
+  --shadow-soft: 0 16px 36px rgba(12, 23, 43, 0.08);
+  --shadow-panel: 0 28px 60px rgba(15, 30, 55, 0.12);
   min-height: 100vh;
   display: grid;
   grid-template-columns: 284px minmax(0, 1fr);
+  color: var(--text);
+  background:
+    radial-gradient(circle at top right, rgba(32, 83, 216, 0.08), transparent 28%),
+    var(--bg);
+}
+
+.dashboard-shell[data-theme="dark"] {
+  --bg: #111214;
+  --bg-soft: #1f2126;
+  --surface: #24262b;
+  --surface-muted: rgba(36, 38, 43, 0.76);
+  --text: #f4f5f7;
+  --muted: #c0c5ce;
+  --subtle: #8d93a0;
+  --line: #30343b;
+  --brand: #5f8bff;
+  --brand-strong: #7fa1ff;
+  --brand-soft: #22304f;
+  --danger: #ff6b7a;
+  --success: #56d39a;
+  --shadow-soft: none;
+  --shadow-panel: 0 28px 60px rgba(0, 0, 0, 0.34);
+  background:
+    radial-gradient(circle at top right, rgba(95, 139, 255, 0.12), transparent 28%),
+    var(--bg);
 }
 
 .dashboard-sidebar {
@@ -10,7 +50,7 @@
   flex-direction: column;
   gap: 20px;
   border-right: 1px solid rgba(221, 228, 239, 0.85);
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   backdrop-filter: blur(18px);
 }
 
@@ -155,6 +195,11 @@
   color: var(--muted);
   background: var(--surface);
   border: 1px solid var(--line);
+}
+
+.theme-admin-button {
+  width: 44px;
+  padding: 0;
 }
 
 .page-shell {
