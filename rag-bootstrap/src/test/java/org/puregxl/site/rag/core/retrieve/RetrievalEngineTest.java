@@ -74,19 +74,20 @@ class RetrievalEngineTest {
                 new NodeScoreFilters(),
                 mcpToolDispatcher
         );
+        IntentNode intentNode = IntentNode.builder()
+                .id("exam-defer-mcp")
+                .kind(IntentKind.MCP)
+                .mcpToolId("rag_answer")
+                .topK(2)
+                .build();
         SubQuestionIntent subIntent = new SubQuestionIntent("缓考申请需要什么材料", List.of(
                 NodeScore.builder()
                         .score(0.93D)
-                        .intentNode(IntentNode.builder()
-                                .id("exam-defer-mcp")
-                                .kind(IntentKind.MCP)
-                                .mcpToolId("rag_answer")
-                                .topK(2)
-                                .build())
+                        .intentNode(intentNode)
                         .build()
         ));
         when(multiChannelRetrievalEngine.search(subIntent, 5)).thenReturn(List.of());
-        when(mcpToolDispatcher.call("rag_answer", "缓考申请需要什么材料", 2))
+        when(mcpToolDispatcher.call(intentNode, "缓考申请需要什么材料", 2))
                 .thenReturn("{\"answer\":\"缓考申请需要证明材料\"}");
 
         RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 5);
@@ -98,6 +99,6 @@ class RetrievalEngineTest {
                 结果：{"answer":"缓考申请需要证明材料"}""");
         assertThat(result.hasMcp()).isTrue();
         assertThat(result.getKbContext()).isEmpty();
-        verify(mcpToolDispatcher).call("rag_answer", "缓考申请需要什么材料", 2);
+        verify(mcpToolDispatcher).call(intentNode, "缓考申请需要什么材料", 2);
     }
 }

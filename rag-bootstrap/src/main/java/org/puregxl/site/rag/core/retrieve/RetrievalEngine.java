@@ -8,6 +8,7 @@ import org.puregxl.site.infra.framework.convention.RetrievedChunk;
 import org.puregxl.site.rag.core.intent.NodeScore;
 import org.puregxl.site.rag.core.intent.NodeScoreFilters;
 import org.puregxl.site.rag.core.intent.SubQuestionIntent;
+import org.puregxl.site.rag.core.retrieve.mcp.McpToolDispatcher;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -30,6 +31,7 @@ public class RetrievalEngine implements RetrievalService{
     private final MultiChannelRetrievalEngine multiChannelRetrievalEngine;
     private final Executor retrievalBuildExecutor;
     private final NodeScoreFilters nodeScoreFilters;
+    private final McpToolDispatcher mcpToolDispatcher;
 
     /**
      * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
@@ -97,7 +99,7 @@ public class RetrievalEngine implements RetrievalService{
 
         List<RetrievedChunk> search = multiChannelRetrievalEngine.search(subIntent, TopK);
 
-        String mcpContext = CollUtil.isEmpty(mcp) ? "" : executeMcpAndMerge(subIntent.getSubQuestion(), mcp);
+        String mcpContext = CollUtil.isEmpty(mcp) ? "" : executeMcpAndMerge(subIntent.getSubQuestion(), mcp, TopK);
 
         String kbContext = buildKbContext(subIntent.getSubQuestion(), search);
 
@@ -110,12 +112,38 @@ public class RetrievalEngine implements RetrievalService{
      * @param mcp
      * @return
      */
-    private String executeMcpAndMerge(String subQuestion, List<NodeScore> mcp) {
-        // MCP 工具调用链路当前还没有接入具体 Tool Dispatcher。
-        // 这里保留上下文构建边界，避免 MCP 意图影响 KB 检索主流程。
-        log.warn("MCP 意图已识别但工具调用链路尚未接入，subQuestion：{}，mcpCount：{}",
-                subQuestion, CollUtil.isEmpty(mcp) ? 0 : mcp.size());
-        return "";
+    private String executeMcpAndMerge(String subQuestion, List<NodeScore> mcp, int defaultTopK) {
+        List<McpToolResult> toolResults = mcp.stream()
+                .filter(nodeScore -> nodeScore != null && nodeScore.getIntentNode() != null)
+                .map(nodeScore -> {
+                    String toolName = nodeScore.getIntentNode().getMcpToolId();
+                    int toolTopK = normalizeToolTopK(nodeScore.getIntentNode().getTopK(), defaultTopK);
+                    String result = mcpToolDispatcher.call(nodeScore.getIntentNode(), subQuestion, toolTopK);
+                    return StrUtil.isBlank(result) ? null : new McpToolResult(toolName, result.trim());
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (CollUtil.isEmpty(toolResults)) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("子问题：").append(subQuestion.trim());
+        builder.append("\nMCP 工具调用结果：");
+        int displayIndex = 1;
+        for (McpToolResult toolResult : toolResults) {
+            builder.append("\n").append(displayIndex++).append(". 工具：").append(toolResult.toolName());
+            builder.append("\n结果：").append(toolResult.result());
+        }
+        return builder.toString();
+    }
+
+    private int normalizeToolTopK(Integer nodeTopK, int defaultTopK) {
+        if (nodeTopK != null && nodeTopK > 0) {
+            return nodeTopK;
+        }
+        return defaultTopK > 0 ? defaultTopK : 3;
     }
 
     /**
@@ -146,5 +174,8 @@ public class RetrievalEngine implements RetrievalService{
                                       String kbContext,
                                       String mcpContext,
                                       Map<String, List<RetrievedChunk>> intentChunks) {
+    }
+
+    private record McpToolResult(String toolName, String result) {
     }
 }
