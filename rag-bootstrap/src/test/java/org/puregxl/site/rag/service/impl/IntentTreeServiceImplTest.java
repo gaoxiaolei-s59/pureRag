@@ -171,4 +171,45 @@ class IntentTreeServiceImplTest {
         verify(intentTreeMapper).deleteById("id-2");
         verify(cacheManager).clear();
     }
+
+    @Test
+    void deleteIntentNodeFallsBackToIntentCodeWhenRecordIdIsMissing() {
+        IntentClassifier intentClassifier = mock(IntentClassifier.class);
+        KnowledgeBaseMapper knowledgeBaseMapper = mock(KnowledgeBaseMapper.class);
+        IntentTreeMapper intentTreeMapper = mock(IntentTreeMapper.class);
+        IntentTreeCacheManager cacheManager = mock(IntentTreeCacheManager.class);
+        IntentTreeServiceImpl service = new IntentTreeServiceImpl(intentClassifier, knowledgeBaseMapper, intentTreeMapper, cacheManager);
+        when(intentTreeMapper.selectById("intent-c")).thenReturn(null);
+        when(intentTreeMapper.selectOne(any())).thenReturn(IntentNodeDO.builder().id("id-2").intentCode("intent-c").build());
+
+        service.deleteIntentNode("intent-c");
+
+        verify(intentTreeMapper).deleteById("id-2");
+        verify(cacheManager).clear();
+    }
+
+    @Test
+    void updateIntentNodeFallsBackToIntentCodeWhenRecordIdIsMissing() {
+        IntentClassifier intentClassifier = mock(IntentClassifier.class);
+        KnowledgeBaseMapper knowledgeBaseMapper = mock(KnowledgeBaseMapper.class);
+        IntentTreeMapper intentTreeMapper = mock(IntentTreeMapper.class);
+        IntentTreeCacheManager cacheManager = mock(IntentTreeCacheManager.class);
+        IntentTreeServiceImpl service = new IntentTreeServiceImpl(intentClassifier, knowledgeBaseMapper, intentTreeMapper, cacheManager);
+        when(intentTreeMapper.selectById("intent-b")).thenReturn(null);
+        when(intentTreeMapper.selectOne(any())).thenReturn(IntentNodeDO.builder().id("id-1").intentCode("intent-b").build());
+        IntentNodeUpdateRequest request = IntentNodeUpdateRequest.builder()
+                .intentCode("intent-b")
+                .name("意图B")
+                .level(1)
+                .kind(0)
+                .enabled(1)
+                .build();
+
+        service.updateIntentNode("intent-b", request);
+
+        ArgumentCaptor<IntentNodeDO> captor = ArgumentCaptor.forClass(IntentNodeDO.class);
+        verify(intentTreeMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getId()).isEqualTo("id-1");
+        verify(cacheManager).clear();
+    }
 }

@@ -6,6 +6,8 @@ import org.puregxl.site.knowledge.dto.request.KnowledgeBasePageRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBaseUpdateRequest;
 import org.puregxl.site.knowledge.dto.response.KnowledgeBaseResponse;
 
+import java.util.List;
+
 public interface KnowledgeBaseService {
 
     /**
@@ -22,4 +24,6 @@ public interface KnowledgeBaseService {
     KnowledgeBaseResponse queryKnowledgeBaseById(String kbId);
 
     IPage<KnowledgeBaseResponse> pageQuery(KnowledgeBasePageRequest requestParam);
+
+    List<String> queryModels();
 }

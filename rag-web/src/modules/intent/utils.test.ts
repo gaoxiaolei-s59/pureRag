@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIntentTree, intentKindText, intentLevelText } from "./utils";
+import { buildIntentTree, getIntentCrudId, intentKindText, intentLevelText, isSameIntentIdentity } from "./utils";
 import type { IntentNode } from "./types";
 
 describe("intent utils", () => {
@@ -14,6 +14,12 @@ describe("intent utils", () => {
 
     expect(tree).toHaveLength(1);
     expect(tree[0].treeChildren.map((item) => item.id)).toEqual(["child-a", "child-b"]);
+  });
+
+  it("should resolve intent CRUD identity from recordId with intentCode fallback", () => {
+    expect(getIntentCrudId({ recordId: "db-1", id: "group-hr" })).toBe("db-1");
+    expect(getIntentCrudId({ id: "group-hr" })).toBe("group-hr");
+    expect(isSameIntentIdentity({ recordId: "db-1", id: "group-hr" }, "group-hr")).toBe(true);
   });
 
   it("should map level and kind labels for display", () => {

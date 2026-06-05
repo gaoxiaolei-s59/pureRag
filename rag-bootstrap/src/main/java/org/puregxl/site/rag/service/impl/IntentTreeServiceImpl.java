@@ -1,8 +1,11 @@
 package org.puregxl.site.rag.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.puregxl.site.knowledge.dao.entity.KnowledgeBaseDO;
 import org.puregxl.site.knowledge.dao.mapper.KnowledgeBaseMapper;
@@ -100,8 +103,15 @@ public class IntentTreeServiceImpl implements IntentTreeService {
         if (StrUtil.isBlank(id)) {
             throw new ClientException("意图节点 ID 不能为空");
         }
-        getRequiredNode(id);
-        intentTreeMapper.deleteById(id);
+        IntentNodeDO requiredNode = getRequiredNode(id);
+        //查询当前是否为父节点，且是否有字节点，如果有不允许删除
+        LambdaQueryWrapper<IntentNodeDO> intentWrapper = Wrappers.lambdaQuery(IntentNodeDO.class)
+                .eq(IntentNodeDO::getParentCode, requiredNode.getIntentCode());
+        List<IntentNodeDO> intentNodeDOS = intentTreeMapper.selectList(intentWrapper);
+        if (CollUtil.isNotEmpty(intentNodeDOS)) {
+            throw new ClientException("当前父节点有子节点，请删除子节点后删除父节点");
+        }
+        intentTreeMapper.deleteById(requiredNode.getId());
         intentTreeCacheManager.clear();
     }
 
@@ -133,6 +143,11 @@ public class IntentTreeServiceImpl implements IntentTreeService {
 
     private IntentNodeDO getRequiredNode(String id) {
         IntentNodeDO existing = intentTreeMapper.selectById(id);
+        if (existing == null) {
+            existing = intentTreeMapper.selectOne(Wrappers.lambdaQuery(IntentNodeDO.class)
+                    .eq(IntentNodeDO::getIntentCode, id)
+                    .last("limit 1"));
+        }
         if (existing == null) {
             throw new ClientException("意图节点不存在");
         }

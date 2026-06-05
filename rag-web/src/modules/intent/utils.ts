@@ -31,6 +31,14 @@ export function buildIntentTree(nodes: IntentNode[]) {
   return roots;
 }
 
+export function getIntentCrudId(node: Pick<IntentNode, "recordId" | "id">) {
+  return node.recordId || node.id;
+}
+
+export function isSameIntentIdentity(node: Pick<IntentNode, "recordId" | "id">, identity: string) {
+  return Boolean(identity && (node.recordId === identity || node.id === identity));
+}
+
 export function intentLevelText(level?: string) {
   const map: Record<string, string> = {
     DOMAIN: "领域",

@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.puregxl.site.infra.config.AIModelProperties;
 import org.puregxl.site.knowledge.dao.entity.KnowledgeBaseDO;
 import org.puregxl.site.knowledge.dao.entity.KnowledgeDocumentDO;
 import org.puregxl.site.knowledge.dao.mapper.KnowledgeBaseMapper;
@@ -40,6 +41,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private final KnowledgeStorageResourceService storageResourceService;
     private final KnowledgeDocumentService knowledgeDocumentService;
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
+    private final AIModelProperties aiModelProperties;
 
     /**
      * 创建对应的KnowledgeBase - Milvus - Rustfs
@@ -206,5 +208,19 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .orderByDesc(KnowledgeBaseDO::getCreateTime));
         return resultPage.convert(t -> BeanUtil.toBean(t, KnowledgeBaseResponse.class));
     }
+
+    /**
+     * 查询获取的列表
+     * @return
+     */
+    @Override
+    public List<String> queryModels() {
+        List<AIModelProperties.ModelCandidate> candidates = aiModelProperties.getEmbedding().getCandidates();
+
+        return candidates.stream()
+                .map(AIModelProperties.ModelCandidate::getModel)
+                .toList();
+    }
+
 
 }

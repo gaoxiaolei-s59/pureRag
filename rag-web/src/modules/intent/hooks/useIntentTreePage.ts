@@ -12,7 +12,7 @@ import {
 import { filterIntentNodes } from "../selectors";
 import { createIntentNode, deleteIntentNode, fetchIntentNodeDetail, fetchIntentNodes, updateIntentNode } from "../services/intent";
 import { IntentNode } from "../types";
-import { buildIntentTree } from "../utils";
+import { buildIntentTree, getIntentCrudId, isSameIntentIdentity } from "../utils";
 
 export function useIntentTreePage() {
   const [notice, setNotice] = useState("意图树已拆成独立页面，可继续扩展路由和节点能力");
@@ -46,11 +46,9 @@ export function useIntentTreePage() {
       setBases(basePage.records ?? []);
       setIntentNodes(records ?? []);
 
-      const fallbackId = records?.[0]?.recordId ?? "";
-      const preferredId =
-        nextSelectedIntentId && (records ?? []).some((item) => item.recordId === nextSelectedIntentId)
-          ? nextSelectedIntentId
-          : fallbackId;
+      const fallbackId = records?.[0] ? getIntentCrudId(records[0]) : "";
+      const preferredRecord = nextSelectedIntentId ? (records ?? []).find((item) => isSameIntentIdentity(item, nextSelectedIntentId)) : null;
+      const preferredId = preferredRecord ? getIntentCrudId(preferredRecord) : fallbackId;
       setSelectedIntentId(preferredId);
       if (preferredId) {
         const detail = await fetchIntentNodeDetail(preferredId);
@@ -87,6 +85,10 @@ export function useIntentTreePage() {
    * 切换当前选中的意图节点，并刷新右侧详情面板。
    */
   async function handleSelectIntent(recordId: string) {
+    if (!recordId) {
+      setNotice("当前节点缺少可操作 ID，请刷新意图树后重试");
+      return;
+    }
     setSelectedIntentId(recordId);
     setLoading(true);
     try {
@@ -100,13 +102,16 @@ export function useIntentTreePage() {
   }
 
   async function handleDeleteIntentNode() {
-    if (!selectedIntentDetail?.recordId) {
+    const crudId = selectedIntentDetail ? getIntentCrudId(selectedIntentDetail) : "";
+    if (!crudId) {
+      setNotice("当前节点缺少可删除 ID，请刷新意图树后重试");
       return;
     }
+    const deletingName = selectedIntentDetail?.name ?? crudId;
     setLoading(true);
     try {
-      await deleteIntentNode(selectedIntentDetail.recordId);
-      setNotice(`已删除节点：${selectedIntentDetail.name}`);
+      await deleteIntentNode(crudId);
+      setNotice(`已删除节点：${deletingName}`);
       setSelectedIntentDetail(null);
       setSelectedIntentId("");
       await refreshPage();
@@ -130,13 +135,18 @@ export function useIntentTreePage() {
     setLoading(true);
     try {
       const payload = buildIntentNodePayload(intentForm);
-      if (intentFormMode === "edit" && intentForm.recordId) {
-        await updateIntentNode(intentForm.recordId, payload);
+      if (intentFormMode === "edit") {
+        const crudId = intentForm.recordId || (selectedIntentDetail ? getIntentCrudId(selectedIntentDetail) : "");
+        if (!crudId) {
+          setNotice("当前节点缺少可编辑 ID，请刷新意图树后重试");
+          return;
+        }
+        await updateIntentNode(crudId, payload);
       } else {
         await createIntentNode(payload);
       }
       setIntentFormOpen(false);
-      await refreshPage(intentForm.recordId);
+      await refreshPage(intentForm.recordId || payload.intentCode);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "保存意图节点失败");
     } finally {

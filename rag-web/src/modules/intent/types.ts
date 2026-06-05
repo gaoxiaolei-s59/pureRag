@@ -1,5 +1,5 @@
 export type IntentNode = {
-  recordId: string;
+  recordId?: string;
   id: string;
   kbId?: string;
   name: string;

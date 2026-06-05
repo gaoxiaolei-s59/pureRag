@@ -9,7 +9,9 @@ describe("knowledge.css table layout contracts", () => {
 
     expect(css).toContain(".knowledge-table-scroll");
     expect(css).toContain("overflow-x: auto;");
-    expect(css).toContain("min-width: 1360px;");
+    expect(css).toContain("min-width: 1120px;");
+    expect(css).toContain("min-height: 54px;");
     expect(css).toContain("text-overflow: ellipsis;");
+    expect(css).toContain('.dashboard-shell[data-theme="dark"] .knowledge-table-scroll .table-row');
   });
 });

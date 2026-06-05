@@ -2,6 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { ReactNode } from "react";
 import { EmptyState } from "../../../components/common/EmptyState";
 import { IntentTreeNode } from "../types";
+import { getIntentCrudId } from "../utils";
 
 type IntentTreePanelProps = {
   intentTree: IntentTreeNode[];
@@ -25,12 +26,12 @@ function renderIntentTree(
     return null;
   }
   return items.map((item) => (
-    <div key={item.recordId} className="intent-tree-node">
+    <div key={getIntentCrudId(item)} className="intent-tree-node">
       <button
         type="button"
-        className={`intent-tree-item ${selectedIntentId === item.recordId ? "active" : ""}`}
+        className={`intent-tree-item ${selectedIntentId === getIntentCrudId(item) ? "active" : ""}`}
         style={{ marginLeft: `${depth * 20}px` }}
-        onClick={() => onSelectIntent(item.recordId)}
+        onClick={() => onSelectIntent(getIntentCrudId(item))}
       >
         <span className="intent-tree-leading">
           {item.treeChildren.length ? <ChevronDown size={15} /> : <span className="intent-tree-dot" />}

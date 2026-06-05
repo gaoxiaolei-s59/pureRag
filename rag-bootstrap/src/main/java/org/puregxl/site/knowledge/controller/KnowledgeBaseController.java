@@ -12,6 +12,8 @@ import org.puregxl.site.framework.convention.Result;
 import org.puregxl.site.framework.web.Results;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 public class KnowledgeBaseController {
@@ -69,4 +71,13 @@ public class KnowledgeBaseController {
     public Result<IPage<KnowledgeBaseResponse>> pageQuery(KnowledgeBasePageRequest requestParam) {
         return Results.success(knowledgeBaseService.pageQuery(requestParam));
     }
+
+    /**
+     * 获取模型列表
+     */
+    @GetMapping("/knowledge/models")
+    public Result<List<String>> queryModels(){
+        return Results.success(knowledgeBaseService.queryModels());
+    }
+
 }
