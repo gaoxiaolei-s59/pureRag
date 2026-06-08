@@ -87,7 +87,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private final EmbeddingService embeddingService;
 
-    @Value("knowledge-document-chunk_topic${unique-name:}")
+    @Value("${rag.chunk-topic:knowledge-document-chunk_topic}")
     private String chunkTopic = "knowledge-document-chunk_topic";
 
     /**

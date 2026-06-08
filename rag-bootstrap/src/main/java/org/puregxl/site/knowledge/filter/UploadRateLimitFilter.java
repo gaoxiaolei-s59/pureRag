@@ -41,7 +41,7 @@ public class UploadRateLimitFilter extends OncePerRequestFilter {
                     TimeUnit.SECONDS
             );
         } catch (Exception e) {
-            Thread.currentThread().interrupt();
+            log.error("[上传限流] 获取上传许可失败", e);
             response.setStatus(500);
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write("{\"code\":\"500\",\"message\":\"获取上传许可失败\"}");

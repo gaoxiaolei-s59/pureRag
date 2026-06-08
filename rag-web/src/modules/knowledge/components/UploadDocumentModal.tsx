@@ -1,4 +1,4 @@
-import { FileUp, Loader2, UploadCloud } from "lucide-react";
+import { FileUp, Loader2, UploadCloud, X } from "lucide-react";
 import { DragEvent, FormEvent } from "react";
 import { Modal } from "../../../components/common/Modal";
 import { KnowledgeBase } from "../types";
@@ -8,6 +8,7 @@ type UploadDocumentModalProps = {
   loading: boolean;
   kbDetail: KnowledgeBase | null;
   sourceType: "file" | "url";
+  file: File | null;
   sourceUrl: string;
   scheduleEnabled: boolean;
   scheduleCron: string;
@@ -23,6 +24,12 @@ type UploadDocumentModalProps = {
   onChunkStrategyChange: (value: string) => void;
   onChunkConfigChange: (value: string) => void;
 };
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function readChunkConfig(chunkConfig: string) {
   try {
@@ -44,6 +51,7 @@ export function UploadDocumentModal({
   loading,
   kbDetail,
   sourceType,
+  file,
   sourceUrl,
   scheduleEnabled,
   scheduleCron,
@@ -94,16 +102,34 @@ export function UploadDocumentModal({
         {sourceType === "file" ? (
           <div className="upload-field">
             <span>本地文件</span>
-            <label
-              className="upload-dropzone"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={handleFileDrop}
-            >
-              <FileUp size={34} />
-              <strong>拖拽文件到此处，或点击选择</strong>
-              <small>支持 PDF、Markdown、Word、TXT 等格式</small>
-              <input type="file" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
-            </label>
+            {file ? (
+              <div className="upload-file-selected">
+                <FileUp size={20} className="upload-file-icon" />
+                <div className="upload-file-info">
+                  <strong className="upload-file-name">{file.name}</strong>
+                  <small className="upload-file-size">{formatFileSize(file.size)}</small>
+                </div>
+                <button
+                  type="button"
+                  className="upload-file-clear"
+                  onClick={() => onFileChange(null)}
+                  title="清除文件"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <label
+                className="upload-dropzone"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleFileDrop}
+              >
+                <FileUp size={34} />
+                <strong>拖拽文件到此处，或点击选择</strong>
+                <small>支持 PDF、Markdown、Word、TXT 等格式</small>
+                <input type="file" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
+              </label>
+            )}
           </div>
         ) : (
           <label className="upload-field">

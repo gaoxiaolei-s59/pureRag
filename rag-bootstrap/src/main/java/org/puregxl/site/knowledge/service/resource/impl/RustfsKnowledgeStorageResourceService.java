@@ -81,10 +81,11 @@ public class RustfsKnowledgeStorageResourceService implements KnowledgeStorageRe
     @Override
     public String uploadDocument(String bucketName, String objectKey, MultipartFile file) {
         try {
+            String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
             rustfsS3Client.putObject(PutObjectRequest.builder()
                             .bucket(bucketName)
                             .key(objectKey)
-                            .contentType(file.getContentType())
+                            .contentType(contentType)
                             .contentLength(file.getSize())
                             .build(),
                     RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
