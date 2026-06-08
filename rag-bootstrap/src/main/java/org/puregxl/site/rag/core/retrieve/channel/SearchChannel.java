@@ -42,5 +42,4 @@ public interface SearchChannel {
      */
     SearchChannelType getType();
 
-
 }

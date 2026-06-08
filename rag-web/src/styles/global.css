@@ -37,13 +37,12 @@
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
   background:
     radial-gradient(circle at top left, rgba(32, 83, 216, 0.08), transparent 24%),
     radial-gradient(circle at bottom right, rgba(25, 182, 150, 0.08), transparent 22%),
@@ -71,11 +70,12 @@ select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
-  padding: 12px 14px;
+  padding: 8px 12px;
   outline: none;
+  font-size: 13.5px;
 }
 
 textarea {
@@ -85,8 +85,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: rgba(32, 83, 216, 0.45);
-  box-shadow: 0 0 0 4px rgba(32, 83, 216, 0.12);
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 a {

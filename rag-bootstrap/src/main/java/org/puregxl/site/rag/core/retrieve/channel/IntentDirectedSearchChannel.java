@@ -88,12 +88,29 @@ public class IntentDirectedSearchChannel implements SearchChannel{
 
     @Override
     public boolean isEnabled(SubQuestionIntent subIntent) {
-        return searchChannelProperties.getChannels() != null
-                && searchChannelProperties.getChannels().getIntentChannel() != null
-                && searchChannelProperties.getChannels().getIntentChannel().isEnabled()
-                && subIntent != null
-                && CollUtil.isNotEmpty(nodeScoreFilters.kb(subIntent.getNodeScores()));
+        // 检查配置是否启用
+        if (!searchChannelProperties.getChannels().getIntentChannel().isEnabled()) {
+            return false;
+        }
+
+        if (!extractKbIntents(subIntent)) {
+            return false;
+        }
+
+        return true;
     }
+
+    public boolean extractKbIntents(SubQuestionIntent subIntent) {
+        List<NodeScore> nodeScores = subIntent.getNodeScores();
+        for (NodeScore nodeScore : nodeScores) {
+            if (nodeScore.getIntentNode().isKB()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
 
     @Override
     public SearchChannelType getType() {

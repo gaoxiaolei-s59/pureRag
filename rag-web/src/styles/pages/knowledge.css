@@ -1,6 +1,6 @@
 .knowledge-grid {
-  grid-template-columns: 150px 145px 180px 72px 135px 135px 188px;
-  min-width: 1120px;
+  grid-template-columns: 140px 130px 160px 60px 120px 120px 170px;
+  min-width: 1020px;
 }
 
 .knowledge-table-scroll {
@@ -16,7 +16,7 @@
 }
 
 .knowledge-table-scroll .table-row {
-  min-height: 54px;
+  min-height: 48px;
 }
 
 .knowledge-table-scroll .cell-strong {
@@ -81,7 +81,7 @@
 }
 
 .upload-document-form {
-  gap: 22px;
+  gap: 16px;
 }
 
 .upload-field {
@@ -91,8 +91,8 @@
 
 .upload-field > span,
 .upload-no-chunk > span {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
 }
 

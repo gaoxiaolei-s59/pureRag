@@ -268,7 +268,7 @@ export function ChatPage() {
               onChange={(event) => chat.setQuestion(event.target.value)}
               onKeyDown={handlePromptKeyDown}
               placeholder="给 PureAgent 发送消息"
-              rows={4}
+              rows={3}
             />
             <div className="composer-actions">
               <button
