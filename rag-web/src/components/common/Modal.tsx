@@ -6,12 +6,13 @@ type ModalProps = {
   description?: string;
   children: ReactNode;
   onClose: () => void;
+  cardClassName?: string;
 };
 
-export function Modal({ title, description, children, onClose }: ModalProps) {
+export function Modal({ title, description, children, onClose, cardClassName = "" }: ModalProps) {
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+      <section className={`modal-card ${cardClassName}`.trim()} role="dialog" aria-modal="true" aria-label={title}>
         <button type="button" className="modal-close" onClick={onClose} aria-label="关闭">
           <X size={20} />
         </button>

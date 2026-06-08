@@ -40,3 +40,13 @@ export function statusText(status?: string) {
   };
   return status ? map[status] ?? status : "-";
 }
+
+export function statusTone(status?: string) {
+  const map: Record<string, string> = {
+    pending: "pending",
+    running: "running",
+    failed: "failed",
+    success: "success"
+  };
+  return status ? map[status] ?? "unknown" : "unknown";
+}

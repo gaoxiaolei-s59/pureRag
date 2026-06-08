@@ -24,4 +24,18 @@ describe("KnowledgePage", () => {
     expect(html).not.toContain("负责人");
     expect(html).not.toContain("负责人数量");
   });
+
+  it("should keep operation errors out of the inline page notice", () => {
+    setStoredToken("test-token");
+    setStoredUserId("user-1");
+    setStoredUserName("admin");
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <KnowledgePage />
+      </MemoryRouter>
+    );
+
+    expect(html).not.toContain('class="notice-text"');
+  });
 });

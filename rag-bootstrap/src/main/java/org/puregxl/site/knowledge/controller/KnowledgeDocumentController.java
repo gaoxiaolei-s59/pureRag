@@ -82,7 +82,4 @@ public class KnowledgeDocumentController {
         return Results.success(documentService.pageKnowledgeDocument(kbId, requestParam));
     }
 
-
-
-
 }

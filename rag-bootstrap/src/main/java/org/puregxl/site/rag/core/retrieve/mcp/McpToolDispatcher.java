@@ -61,17 +61,25 @@ public class McpToolDispatcher {
      * 构建 JSON 参数和异常降级。单个工具失败时返回空字符串，避免拖垮整次 RAG 问答。
      */
     public String call(IntentNode intentNode, String subQuestion, Integer topK) {
+        return call(intentNode, subQuestion, topK, null);
+    }
+
+    public String call(IntentNode intentNode, String subQuestion, Integer topK, String currentUserId) {
         if (intentNode == null) {
             return "";
         }
-        return call(intentNode.getMcpToolId(), subQuestion, topK, intentNode.getParamPromptTemplate());
+        return call(intentNode.getMcpToolId(), subQuestion, topK, intentNode.getParamPromptTemplate(), currentUserId);
     }
 
     public String call(String toolName, String subQuestion, Integer topK) {
         return call(toolName, subQuestion, topK, null);
     }
 
-    private String call(String toolName, String subQuestion, Integer topK, String paramPromptTemplate) {
+    public String call(String toolName, String subQuestion, Integer topK, String currentUserId) {
+        return call(toolName, subQuestion, topK, null, currentUserId);
+    }
+
+    private String call(String toolName, String subQuestion, Integer topK, String paramPromptTemplate, String currentUserId) {
         if (StrUtil.isBlank(toolName) || StrUtil.isBlank(subQuestion)) {
             return "";
         }
@@ -88,7 +96,8 @@ public class McpToolDispatcher {
                 callback.getToolDefinition(),
                 subQuestion.trim(),
                 topK,
-                paramPromptTemplate
+                paramPromptTemplate,
+                currentUserId
         ));
         try {
             return StrUtil.blankToDefault(callback.call(argumentsJson), "");
@@ -122,9 +131,13 @@ public class McpToolDispatcher {
                                                ToolDefinition toolDefinition,
                                                String subQuestion,
                                                Integer topK,
-                                               String paramPromptTemplate) {
+                                               String paramPromptTemplate,
+                                               String currentUserId) {
         String inputSchema = toolDefinition == null ? "" : StrUtil.blankToDefault(toolDefinition.inputSchema(), "");
-        Map<String, Object> llmArguments = extractArgumentsWithLlm(toolName, toolDefinition, inputSchema, subQuestion, topK, paramPromptTemplate);
+        Map<String, Object> llmArguments = new LinkedHashMap<>(
+                extractArgumentsWithLlm(toolName, toolDefinition, inputSchema, subQuestion, topK, paramPromptTemplate)
+        );
+        injectContextUserId(inputSchema, llmArguments, currentUserId);
         if (!llmArguments.isEmpty()) {
             return llmArguments;
         }
@@ -142,15 +155,27 @@ public class McpToolDispatcher {
             arguments.put("topK", normalizeTopK(topK));
         }
 
-        // 当前 rag-mcp 中的简历工具需要 userId，先从子问题中抽取显式数字。
+        // 身份参数优先使用登录上下文中的用户 ID；缺失时才回退到子问题中的显式数字。
         if (hasSchemaProperty(inputSchema, "userId")) {
-            firstPositiveLong(subQuestion).ifPresent(userId -> arguments.put("userId", userId));
+            Optional<Long> contextUserId = parsePositiveLong(currentUserId);
+            if (contextUserId.isPresent()) {
+                arguments.put("userId", contextUserId.get());
+            } else {
+                firstPositiveLong(subQuestion).ifPresent(userId -> arguments.put("userId", userId));
+            }
         }
 
         if (arguments.isEmpty()) {
             arguments.put("question", subQuestion);
         }
         return arguments;
+    }
+
+    private void injectContextUserId(String inputSchema, Map<String, Object> arguments, String currentUserId) {
+        if (!hasSchemaProperty(inputSchema, "userId")) {
+            return;
+        }
+        parsePositiveLong(currentUserId).ifPresent(userId -> arguments.put("userId", userId));
     }
 
     private Map<String, Object> extractArgumentsWithLlm(String toolName,
@@ -291,15 +316,23 @@ public class McpToolDispatcher {
     private Optional<Long> firstPositiveLong(String text) {
         Matcher matcher = POSITIVE_INTEGER_PATTERN.matcher(StrUtil.blankToDefault(text, ""));
         while (matcher.find()) {
-            try {
-                long value = Long.parseLong(matcher.group());
-                if (value > 0) {
-                    return Optional.of(value);
-                }
-            } catch (NumberFormatException ignored) {
-                // 超长数字不作为有效 userId，继续尝试后续片段。
+            Optional<Long> parsed = parsePositiveLong(matcher.group());
+            if (parsed.isPresent()) {
+                return parsed;
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<Long> parsePositiveLong(String text) {
+        if (StrUtil.isBlank(text)) {
+            return Optional.empty();
+        }
+        try {
+            long value = Long.parseLong(text.trim());
+            return value > 0 ? Optional.of(value) : Optional.empty();
+        } catch (NumberFormatException ignored) {
+            return Optional.empty();
+        }
     }
 }

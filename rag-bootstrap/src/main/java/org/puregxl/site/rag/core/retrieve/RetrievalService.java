@@ -5,5 +5,5 @@ import org.puregxl.site.rag.core.intent.SubQuestionIntent;
 import java.util.List;
 
 public interface RetrievalService {
-    RetrievalContext retrieval(List<SubQuestionIntent> subIntents, int defaultTopK);
+    RetrievalContext retrieval(List<SubQuestionIntent> subIntents, int defaultTopK, String currentUserId);
 }

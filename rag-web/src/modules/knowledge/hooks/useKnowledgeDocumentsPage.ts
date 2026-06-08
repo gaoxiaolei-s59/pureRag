@@ -3,19 +3,15 @@ import { useParams } from "react-router-dom";
 import { buildKnowledgeDocumentUpdatePayload, createKnowledgeDocumentFormState } from "../documentForm";
 import { filterDocuments } from "../selectors";
 import {
-  createKnowledgeChunk,
-  deleteKnowledgeChunk,
   deleteKnowledgeDocument,
   fetchKnowledgeBaseDetail,
-  fetchKnowledgeChunks,
   fetchKnowledgeDocumentDetail,
   fetchKnowledgeDocuments,
   startDocumentChunk,
-  updateKnowledgeChunk,
   updateKnowledgeDocument,
   uploadKnowledgeDocument
 } from "../services/knowledge";
-import { KnowledgeBase, KnowledgeChunk, KnowledgeDocument } from "../types";
+import { KnowledgeBase, KnowledgeDocument } from "../types";
 import { DEFAULT_CHUNK_CONFIG } from "../utils";
 
 export function useKnowledgeDocumentsPage() {
@@ -25,7 +21,6 @@ export function useKnowledgeDocumentsPage() {
   const [kbDetail, setKbDetail] = useState<KnowledgeBase | null>(null);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [selectedDocDetail, setSelectedDocDetail] = useState<KnowledgeDocument | null>(null);
-  const [docChunks, setDocChunks] = useState<KnowledgeChunk[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -43,7 +38,6 @@ export function useKnowledgeDocumentsPage() {
   const [docFormScheduleCron, setDocFormScheduleCron] = useState("0 0/30 * * * ?");
   const [docFormChunkStrategy, setDocFormChunkStrategy] = useState("fixed_size");
   const [docFormChunkConfig, setDocFormChunkConfig] = useState(DEFAULT_CHUNK_CONFIG);
-  const [newChunkContent, setNewChunkContent] = useState("");
 
   const filteredDocuments = useMemo(
     () => filterDocuments(documents, search, statusFilter),
@@ -71,28 +65,27 @@ export function useKnowledgeDocumentsPage() {
   }
 
   /**
-   * 拉取单个文档的详情和 chunk 列表，并把结果同步到详情弹窗表单。
+   * 拉取单个文档详情，并把结果同步到详情弹窗表单。
+   * 详情弹窗只负责文档配置编辑，不再加载具体 chunk 正文，避免大内容影响页面打开速度。
    * `openPanel` 用于区分首次打开和局部刷新，避免页面层关心表单如何从接口数据映射。
    */
   async function loadDocumentDetail(docId: string, openPanel: boolean) {
-    const [detail, chunks] = await Promise.all([fetchKnowledgeDocumentDetail(docId), fetchKnowledgeChunks(docId)]);
+    const detail = await fetchKnowledgeDocumentDetail(docId);
     const formState = createKnowledgeDocumentFormState(detail);
     setSelectedDocDetail(detail);
-    setDocChunks(chunks ?? []);
     setDocFormName(formState.docFormName);
     setDocFormEnabled(formState.docFormEnabled);
     setDocFormScheduleEnabled(formState.docFormScheduleEnabled);
     setDocFormScheduleCron(formState.docFormScheduleCron);
     setDocFormChunkStrategy(formState.docFormChunkStrategy);
     setDocFormChunkConfig(formState.docFormChunkConfig);
-    setNewChunkContent("");
     if (openPanel) {
       setDocDetailOpen(true);
     }
   }
 
   /**
-   * 打开文档详情弹窗，并同步文档编辑表单与 chunk 列表。
+   * 打开文档详情弹窗，并同步文档编辑表单。
    */
   async function openDocumentDetail(docId: string) {
     setLoading(true);
@@ -216,63 +209,6 @@ export function useKnowledgeDocumentsPage() {
     }
   }
 
-  async function handleCreateChunk(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedDocDetail || !newChunkContent.trim()) {
-      setNotice("请输入 Chunk 内容");
-      return;
-    }
-    setLoading(true);
-    try {
-      await createKnowledgeChunk(selectedDocDetail.id, {
-        content: newChunkContent.trim(),
-        index: docChunks.length
-      });
-      setNewChunkContent("");
-      setNotice("Chunk 已新增");
-      await refreshPage();
-      await refreshDocumentDetail(selectedDocDetail.id);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "新增 Chunk 失败");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleUpdateChunk(chunkId: string, content: string) {
-    if (!selectedDocDetail || !content.trim()) {
-      setNotice("Chunk 内容不能为空");
-      return;
-    }
-    setLoading(true);
-    try {
-      await updateKnowledgeChunk(selectedDocDetail.id, chunkId, { content: content.trim() });
-      setNotice("Chunk 已更新");
-      await refreshDocumentDetail(selectedDocDetail.id);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "更新 Chunk 失败");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleDeleteChunk(chunkId: string) {
-    if (!selectedDocDetail) {
-      return;
-    }
-    setLoading(true);
-    try {
-      await deleteKnowledgeChunk(selectedDocDetail.id, chunkId);
-      setNotice("Chunk 已删除");
-      await refreshPage();
-      await refreshDocumentDetail(selectedDocDetail.id);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "删除 Chunk 失败");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return {
     kbId,
     notice,
@@ -281,7 +217,6 @@ export function useKnowledgeDocumentsPage() {
     documents,
     filteredDocuments,
     selectedDocDetail,
-    docChunks,
     search,
     statusFilter,
     uploadOpen,
@@ -299,7 +234,6 @@ export function useKnowledgeDocumentsPage() {
     docFormScheduleCron,
     docFormChunkStrategy,
     docFormChunkConfig,
-    newChunkContent,
     refreshPage,
     openDocumentDetail,
     setSearch,
@@ -319,14 +253,9 @@ export function useKnowledgeDocumentsPage() {
     setDocFormScheduleCron,
     setDocFormChunkStrategy,
     setDocFormChunkConfig,
-    setNewChunkContent,
-    setDocChunks,
     handleUpload,
     handleChunk,
     handleDeleteDoc,
-    handleUpdateDocument,
-    handleCreateChunk,
-    handleUpdateChunk,
-    handleDeleteChunk
+    handleUpdateDocument
   };
 }

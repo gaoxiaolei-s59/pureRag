@@ -33,7 +33,7 @@ class RetrievalEngineTest {
                 RetrievedChunk.builder().id("r2").text("提交时需要上传发票和审批单").score(0.86F).build()
         ));
 
-        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 5);
+        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 5, "user-1");
 
         assertThat(result.getKbContext()).isEqualTo("""
                 子问题：报销流程在哪申请
@@ -58,7 +58,7 @@ class RetrievalEngineTest {
         SubQuestionIntent subIntent = new SubQuestionIntent("没有命中的问题", List.of());
         when(multiChannelRetrievalEngine.search(subIntent, 3)).thenReturn(List.of());
 
-        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 3);
+        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 3, "user-1");
 
         assertThat(result.isEmpty()).isTrue();
         assertThat(result.getIntentChunks()).isEmpty();
@@ -87,10 +87,10 @@ class RetrievalEngineTest {
                         .build()
         ));
         when(multiChannelRetrievalEngine.search(subIntent, 5)).thenReturn(List.of());
-        when(mcpToolDispatcher.call(intentNode, "缓考申请需要什么材料", 2))
+        when(mcpToolDispatcher.call(intentNode, "缓考申请需要什么材料", 2, "user-1"))
                 .thenReturn("{\"answer\":\"缓考申请需要证明材料\"}");
 
-        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 5);
+        RetrievalContext result = retrievalEngine.retrieval(List.of(subIntent), 5, "user-1");
 
         assertThat(result.getMcpContext()).isEqualTo("""
                 子问题：缓考申请需要什么材料
@@ -99,6 +99,6 @@ class RetrievalEngineTest {
                 结果：{"answer":"缓考申请需要证明材料"}""");
         assertThat(result.hasMcp()).isTrue();
         assertThat(result.getKbContext()).isEmpty();
-        verify(mcpToolDispatcher).call(intentNode, "缓考申请需要什么材料", 2);
+        verify(mcpToolDispatcher).call(intentNode, "缓考申请需要什么材料", 2, "user-1");
     }
 }

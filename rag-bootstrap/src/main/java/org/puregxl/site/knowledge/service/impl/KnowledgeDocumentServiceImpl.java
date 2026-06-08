@@ -225,10 +225,12 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .updatedBy(currentUserId())
                 .deleted(1)
                 .build();
-        int updated = knowledgeDocumentMapper.updateById(update);
-        if (updated != 1) {
+
+        int deleted = knowledgeDocumentMapper.deleteById(update);
+        if (deleted != 1) {
             throw new ServiceException("删除文档失败");
         }
+
         disableDocumentSchedule(docId);
 
         // 删除文档时同步逻辑删除其下 chunk，避免列表和检索侧继续读到孤立分块。
@@ -296,6 +298,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         String keywordParam = StrUtil.isBlank(keyword) ? null : keyword.trim();
         String statusParam = StrUtil.isBlank(status) ? null : status.trim();
 
+
         IPage<KnowledgeDocumentDO> resultPage = knowledgeDocumentMapper.selectPage(Page.of(current, size),
                 Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
                         .eq(KnowledgeDocumentDO::getKbId, kbId)
@@ -306,6 +309,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                                 KnowledgeDocumentDO::getStatus,
                                 statusParam)
                         .orderByDesc(KnowledgeDocumentDO::getCreateTime));
+
         return resultPage.convert(item -> BeanUtil.toBean(item, KnowledgeDocumentResponse.class));
     }
 

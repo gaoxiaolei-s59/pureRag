@@ -51,7 +51,7 @@ class McpToolDispatcherTest {
     }
 
     @Test
-    void callExtractsPositiveUserIdWhenToolSchemaRequiresUserId() {
+    void callUsesContextUserIdWhenToolSchemaRequiresUserId() {
         AtomicReference<String> actualInput = new AtomicReference<>();
         ToolCallback callback = new ToolCallback() {
             @Override
@@ -74,10 +74,10 @@ class McpToolDispatcherTest {
         ObjectProvider<ToolCallbackProvider> providers = toolCallbackProviders(callback);
         McpToolDispatcher dispatcher = new McpToolDispatcher(providers, emptyLlmServiceProvider());
 
-        String result = dispatcher.call("resume_list_by_user_id", "请查询用户ID为 42 的简历", 3);
+        String result = dispatcher.call("resume_list_by_user_id", "请查询用户ID为 42 的简历", 3, "7");
 
         assertThat(result).isEqualTo("[{\"id\":1,\"userId\":42}]");
-        assertThat(actualInput.get()).isEqualTo("{\"userId\":42}");
+        assertThat(actualInput.get()).isEqualTo("{\"userId\":7}");
     }
 
     @Test
@@ -116,10 +116,10 @@ class McpToolDispatcherTest {
                 .paramPromptTemplate("请从用户问题中抽取工具参数，只返回 JSON。")
                 .build();
 
-        String result = dispatcher.call(intentNode, "帮我查一下用户ID为 42 的简历", 3);
+        String result = dispatcher.call(intentNode, "帮我查一下用户ID为 42 的简历", 3, "7");
 
         assertThat(result).isEqualTo("[{\"id\":1,\"userId\":42}]");
-        assertThat(actualInput.get()).isEqualTo("{\"userId\":42}");
+        assertThat(actualInput.get()).isEqualTo("{\"userId\":7}");
         verify(llmService).chat(ArgumentMatchers.<ChatRequest>argThat(request -> request != null
                 && request.getTemperature().equals(0.0D)
                 && request.getMessages().stream().anyMatch(message -> message.getContent().contains("resume_list_by_user_id"))));

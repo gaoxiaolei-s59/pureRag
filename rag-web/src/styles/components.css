@@ -249,6 +249,17 @@
   flex-wrap: wrap;
 }
 
+.alert-modal-body {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: 18px auto 22px;
+  border-radius: 18px;
+  color: #b42318;
+  background: #fee4e2;
+}
+
 .two-column-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

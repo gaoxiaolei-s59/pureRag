@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Database,
   FileText,
   FolderOpen,
@@ -18,7 +19,7 @@ import { formatDateTime } from "../utils";
 
 export function KnowledgePage() {
   const navigate = useNavigate();
-  const [notice, setNotice] = useState("管理知识库以及对应文档入口");
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [search, setSearch] = useState("");
@@ -45,9 +46,8 @@ export function KnowledgePage() {
     try {
       const page = await fetchKnowledgeBases();
       setBases(page.records ?? []);
-      setNotice("知识库列表已刷新");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "刷新知识库失败");
+      setAlertMessage(error instanceof Error ? error.message : "刷新知识库失败");
     } finally {
       setLoading(false);
     }
@@ -60,7 +60,7 @@ export function KnowledgePage() {
   async function handleCreateKb(event: FormEvent) {
     event.preventDefault();
     if (!newKbName || !newKbCollection || !newKbModel) {
-      setNotice("请填写知识库名称、Collection 和模型");
+      setAlertMessage("请填写知识库名称、Collection 和模型");
       return;
     }
     setLoading(true);
@@ -73,10 +73,9 @@ export function KnowledgePage() {
       setNewKbName("");
       setNewKbCollection("");
       setCreateOpen(false);
-      setNotice("知识库创建成功");
       await refreshBases();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "创建知识库失败");
+      setAlertMessage(error instanceof Error ? error.message : "创建知识库失败");
     } finally {
       setLoading(false);
     }
@@ -85,17 +84,16 @@ export function KnowledgePage() {
   async function handleUpdateKb(event: FormEvent) {
     event.preventDefault();
     if (!selectedKb || !editKbName.trim()) {
-      setNotice("请填写知识库名称");
+      setAlertMessage("请填写知识库名称");
       return;
     }
     setLoading(true);
     try {
       await updateKnowledgeBase(selectedKb.id, { name: editKbName.trim() });
       setEditOpen(false);
-      setNotice("知识库已更新");
       await refreshBases();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "更新知识库失败");
+      setAlertMessage(error instanceof Error ? error.message : "更新知识库失败");
     } finally {
       setLoading(false);
     }
@@ -105,10 +103,9 @@ export function KnowledgePage() {
     setLoading(true);
     try {
       await deleteKnowledgeBase(kb.id);
-      setNotice(`已删除知识库：${kb.name}`);
       await refreshBases();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "删除知识库失败");
+      setAlertMessage(error instanceof Error ? error.message : "删除知识库失败");
     } finally {
       setLoading(false);
     }
@@ -133,8 +130,6 @@ export function KnowledgePage() {
           </button>
         </div>
       </div>
-
-      <p className="notice-text">{notice}</p>
 
       <section className="stats-grid">
         <StatCard icon={<Database size={20} />} label="知识库" value={bases.length} />
@@ -219,6 +214,19 @@ export function KnowledgePage() {
               </button>
             </div>
           </form>
+        </Modal>
+      ) : null}
+
+      {alertMessage ? (
+        <Modal title="操作提示" description={alertMessage} onClose={() => setAlertMessage(null)}>
+          <div className="alert-modal-body" aria-hidden="true">
+            <AlertTriangle size={34} />
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="gradient-button" onClick={() => setAlertMessage(null)}>
+              知道了
+            </button>
+          </div>
         </Modal>
       ) : null}
 

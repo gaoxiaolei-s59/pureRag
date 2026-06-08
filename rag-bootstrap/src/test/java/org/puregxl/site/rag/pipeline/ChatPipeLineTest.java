@@ -95,7 +95,7 @@ class ChatPipeLineTest {
                 ChatMessage.assistant("我是助手。"),
                 ChatMessage.user(question)
         );
-        verify(retrievalEngine, never()).retrieval(any(), any(Integer.class));
+        verify(retrievalEngine, never()).retrieval(any(), any(Integer.class), any());
     }
 
     @Test
@@ -151,7 +151,7 @@ class ChatPipeLineTest {
         when(queryRewriteService.rewrite(question, history)).thenReturn(rewriteResult);
         when(intentResolver.resolve(rewriteResult)).thenReturn(subIntents);
         when(intentResolver.isSystemOnly(subIntents.get(0).getNodeScores())).thenReturn(false);
-        when(retrievalEngine.retrieval(subIntents, 6)).thenReturn(retrievalContext);
+        when(retrievalEngine.retrieval(subIntents, 6, "user-1")).thenReturn(retrievalContext);
         when(llmService.streamChat(any(ChatRequest.class), eq(callback))).thenReturn(handle);
 
         StreamCancellationHandle actual = pipeLine.execute(StreamChatContext.builder()
@@ -169,6 +169,6 @@ class ChatPipeLineTest {
         assertThat(systemPrompt).contains("知识库检索结果：");
         assertThat(systemPrompt).contains("报销在 OA 系统发起");
         assertThat(systemPrompt).contains("MCP工具结果：当前没有额外工具结果");
-        verify(retrievalEngine).retrieval(subIntents, 6);
+        verify(retrievalEngine).retrieval(subIntents, 6, "user-1");
     }
 }

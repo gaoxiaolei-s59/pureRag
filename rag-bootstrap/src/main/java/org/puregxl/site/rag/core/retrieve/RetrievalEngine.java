@@ -37,13 +37,13 @@ public class RetrievalEngine implements RetrievalService{
      * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
      */
     @Override
-    public RetrievalContext retrieval(List<SubQuestionIntent> subIntents, int defaultTopK) {
+    public RetrievalContext retrieval(List<SubQuestionIntent> subIntents, int defaultTopK, String currentUserId) {
         List<SubQuestionIntent> safeSubIntents = CollUtil.isEmpty(subIntents) ? List.of() : subIntents;
         List<CompletableFuture<SubQuestionContext>> tasks = safeSubIntents.stream()
                 .map(subIntent -> CompletableFuture.supplyAsync(
                         () -> {
                             try{
-                                return buildSubQuestionContext(subIntent, defaultTopK);
+                                return buildSubQuestionContext(subIntent, defaultTopK, currentUserId);
                             } catch (Exception e) {
                                 log.error("子问题上下文构建失败，降级为空上下文，question：{}", subIntent.getSubQuestion(), e);
                                 return new SubQuestionContext(subIntent.getSubQuestion(), "", "", Map.of());
@@ -89,7 +89,7 @@ public class RetrievalEngine implements RetrievalService{
      * @param TopK
      * @return
      */
-    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent subIntent, int TopK) {
+    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent subIntent, int TopK, String currentUserId) {
         if (subIntent == null || StrUtil.isBlank(subIntent.getSubQuestion())) {
             return new SubQuestionContext("", "", "", Map.of());
         }
@@ -99,7 +99,7 @@ public class RetrievalEngine implements RetrievalService{
 
         List<RetrievedChunk> search = multiChannelRetrievalEngine.search(subIntent, TopK);
 
-        String mcpContext = CollUtil.isEmpty(mcp) ? "" : executeMcpAndMerge(subIntent.getSubQuestion(), mcp, TopK);
+        String mcpContext = CollUtil.isEmpty(mcp) ? "" : executeMcpAndMerge(subIntent.getSubQuestion(), mcp, TopK, currentUserId);
 
         String kbContext = buildKbContext(subIntent.getSubQuestion(), search);
 
@@ -112,13 +112,13 @@ public class RetrievalEngine implements RetrievalService{
      * @param mcp
      * @return
      */
-    private String executeMcpAndMerge(String subQuestion, List<NodeScore> mcp, int defaultTopK) {
+    private String executeMcpAndMerge(String subQuestion, List<NodeScore> mcp, int defaultTopK, String currentUserId) {
         List<McpToolResult> toolResults = mcp.stream()
                 .filter(nodeScore -> nodeScore != null && nodeScore.getIntentNode() != null)
                 .map(nodeScore -> {
                     String toolName = nodeScore.getIntentNode().getMcpToolId();
                     int toolTopK = normalizeToolTopK(nodeScore.getIntentNode().getTopK(), defaultTopK);
-                    String result = mcpToolDispatcher.call(nodeScore.getIntentNode(), subQuestion, toolTopK);
+                    String result = mcpToolDispatcher.call(nodeScore.getIntentNode(), subQuestion, toolTopK, currentUserId);
                     return StrUtil.isBlank(result) ? null : new McpToolResult(toolName, result.trim());
                 })
                 .filter(Objects::nonNull)
