@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
-import { fetchKnowledgeBases } from "../../knowledge/services/knowledge";
-import { KnowledgeBase } from "../../knowledge/types";
+import { fetchAllKnowledgeBases } from "../../knowledge/services/knowledge";
+import { KnowledgeBaseInfo } from "../../knowledge/types";
 import {
   buildIntentNodePayload,
   createChildIntentForm,
@@ -17,7 +17,7 @@ import { buildIntentTree, getIntentCrudId, isSameIntentIdentity } from "../utils
 export function useIntentTreePage() {
   const [notice, setNotice] = useState("意图树已拆成独立页面，可继续扩展路由和节点能力");
   const [loading, setLoading] = useState(false);
-  const [bases, setBases] = useState<KnowledgeBase[]>([]);
+  const [bases, setBases] = useState<KnowledgeBaseInfo[]>([]);
   const [intentNodes, setIntentNodes] = useState<IntentNode[]>([]);
   const [intentSearch, setIntentSearch] = useState("");
   const [intentLevelFilter, setIntentLevelFilter] = useState("all");
@@ -42,8 +42,8 @@ export function useIntentTreePage() {
   async function refreshPage(nextSelectedIntentId = selectedIntentId) {
     setLoading(true);
     try {
-      const [basePage, records] = await Promise.all([fetchKnowledgeBases(), fetchIntentNodes()]);
-      setBases(basePage.records ?? []);
+      const [bases, records] = await Promise.all([fetchAllKnowledgeBases(), fetchIntentNodes()]);
+      setBases(bases ?? []);
       setIntentNodes(records ?? []);
 
       const fallbackId = records?.[0] ? getIntentCrudId(records[0]) : "";

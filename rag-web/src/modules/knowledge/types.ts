@@ -9,6 +9,11 @@ export type KnowledgeBase = {
   updateTime?: string;
 };
 
+export type KnowledgeBaseInfo = {
+  id: string;
+  name: string;
+};
+
 export type KnowledgeDocument = {
   id: string;
   kbId: string;

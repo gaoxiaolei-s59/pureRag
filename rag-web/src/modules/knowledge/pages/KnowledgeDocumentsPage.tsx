@@ -82,6 +82,7 @@ export function KnowledgeDocumentsPage() {
         loading={page.loading}
         kbDetail={page.kbDetail}
         sourceType={page.sourceType}
+        file={page.file}
         sourceUrl={page.sourceUrl}
         scheduleEnabled={page.scheduleEnabled}
         scheduleCron={page.scheduleCron}

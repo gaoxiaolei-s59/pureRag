@@ -1,6 +1,7 @@
 import { PageResult, request } from "../../../services/http";
 import {
   KnowledgeBase,
+  KnowledgeBaseInfo,
   KnowledgeChunk,
   KnowledgeDocument,
   UploadDocumentParams
@@ -8,6 +9,10 @@ import {
 
 export function fetchKnowledgeBases() {
   return request<PageResult<KnowledgeBase>>("/knowledge-base?current=1&size=50");
+}
+
+export function fetchAllKnowledgeBases() {
+  return request<KnowledgeBaseInfo[]>("/knowledge/all");
 }
 
 export function createKnowledgeBase(params: {

@@ -16,6 +16,7 @@ import org.puregxl.site.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBaseCreateRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBasePageRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBaseUpdateRequest;
+import org.puregxl.site.knowledge.dto.response.KnowledgeBaseInfoResponse;
 import org.puregxl.site.knowledge.dto.response.KnowledgeBaseResponse;
 import org.puregxl.site.knowledge.service.KnowledgeBaseService;
 import org.puregxl.site.knowledge.service.KnowledgeDocumentService;
@@ -221,6 +222,23 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .map(AIModelProperties.ModelCandidate::getModel)
                 .toList();
     }
+
+    /**
+     * 查询所有的知识库
+     * @return
+     */
+    @Override
+    public List<KnowledgeBaseInfoResponse> queryAllKnowledgeBase() {
+        List<KnowledgeBaseDO> knowledgeBaseDOS = knowledgeBaseMapper.selectList(
+                Wrappers.lambdaQuery(KnowledgeBaseDO.class)
+                        .eq(KnowledgeBaseDO::getDelFlag, 0)
+                        .orderByDesc(KnowledgeBaseDO::getCreateTime));
+        return knowledgeBaseDOS.stream()
+                .map(item -> BeanUtil.toBean(item, KnowledgeBaseInfoResponse.class))
+                .toList();
+    }
+
+
 
 
 }

@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBaseCreateRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBasePageRequest;
 import org.puregxl.site.knowledge.dto.request.KnowledgeBaseUpdateRequest;
+import org.puregxl.site.knowledge.dto.response.KnowledgeBaseInfoResponse;
 import org.puregxl.site.knowledge.dto.response.KnowledgeBaseResponse;
 import org.puregxl.site.knowledge.service.KnowledgeBaseService;
 import org.puregxl.site.framework.convention.Result;
@@ -78,6 +79,16 @@ public class KnowledgeBaseController {
     @GetMapping("/knowledge/models")
     public Result<List<String>> queryModels(){
         return Results.success(knowledgeBaseService.queryModels());
+    }
+
+
+    /**
+     * 查询所有的知识库的id和name用于意向图的创建
+     * @return
+     */
+    @GetMapping("/knowledge/all")
+    public Result<List<KnowledgeBaseInfoResponse>> queryAllKnowledgeBase() {
+        return Results.success(knowledgeBaseService.queryAllKnowledgeBase());
     }
 
 }

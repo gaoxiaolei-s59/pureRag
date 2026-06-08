@@ -1,7 +1,7 @@
 import { Loader2, Plus } from "lucide-react";
 import { FormEvent } from "react";
 import { Modal } from "../../../components/common/Modal";
-import { KnowledgeBase } from "../../knowledge/types";
+import { KnowledgeBaseInfo } from "../../knowledge/types";
 import { IntentFormMode, IntentFormState } from "../form";
 import { IntentNode } from "../types";
 
@@ -11,7 +11,7 @@ type IntentFormModalProps = {
   mode: IntentFormMode;
   form: IntentFormState;
   intentNodes: IntentNode[];
-  bases: KnowledgeBase[];
+  bases: KnowledgeBaseInfo[];
   onClose: () => void;
   onSubmit: (event: FormEvent) => void;
   onFormChange: (updater: (current: IntentFormState) => IntentFormState) => void;

@@ -70,10 +70,10 @@ public class IntentResolver {
      */
     public List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifiy(question);
-        return scores.stream()
+        return new ArrayList<>(scores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_VALUE)
                 .limit(MAX_INTENT_COUNT)
-                .toList();
+                .toList());
     }
 
 
@@ -111,9 +111,9 @@ public class IntentResolver {
 
         for (int questionIndex = 0; questionIndex < subIntents.size(); questionIndex++) {
             SubQuestionIntent current = subIntents.get(questionIndex);
-            List<NodeScore> currentScores = CollUtil.isEmpty(current.getNodeScores()) ? List.of() : current.getNodeScores();
+            List<NodeScore> currentScores = CollUtil.isEmpty(current.getNodeScores()) ? new ArrayList<>() : new ArrayList<>(current.getNodeScores());
             if (currentScores.isEmpty()) {
-                result.add(new SubQuestionIntent(current.getSubQuestion(), List.of()));
+                result.add(new SubQuestionIntent(current.getSubQuestion(), new ArrayList<>()));
                 continue;
             }
 

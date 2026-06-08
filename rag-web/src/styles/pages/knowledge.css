@@ -147,6 +147,72 @@
   pointer-events: none;
 }
 
+.upload-file-selected {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 80px;
+  padding: 18px 20px;
+  border: 2px solid #86efac;
+  border-radius: 16px;
+  background: #f0fdf4;
+  animation: fadeSlideIn 0.18s ease;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.upload-file-icon {
+  flex: 0 0 auto;
+  color: #16a34a;
+}
+
+.upload-file-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.upload-file-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #15803d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-file-size {
+  font-size: 13px;
+  color: #4ade80;
+}
+
+.upload-file-clear {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #dcfce7;
+  color: #15803d;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.upload-file-clear:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
 .upload-chunk-panel,
 .upload-schedule-panel {
   display: grid;
