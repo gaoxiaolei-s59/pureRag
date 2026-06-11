@@ -1,56 +1,141 @@
 # RagTest
 
-`RagTest` is a multi-module experimental project for building RAG-powered chat, knowledge base management, intent recognition, MCP tool integration, and streaming conversational experiences.
+[![Java](https://img.shields.io/badge/Java-17-blue.svg)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Spring AI](https://img.shields.io/badge/Spring%20AI-2.0.0--M2-green.svg)](https://spring.io/projects/spring-ai)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646cff.svg)](https://vitejs.dev/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-The repository currently focuses on a practical end-to-end loop that combines:
+> A multi-module experimental project for building RAG-powered chat, knowledge base management, intent recognition, MCP tool integration, and streaming conversational experiences.
 
-- streaming SSE chat
-- conversation memory
-- query rewriting
-- intent classification
-- default knowledge-base retrieval
-- LLM response streaming
+[中文文档](./README.md)
 
-## Repository Layout
+## Table of Contents
 
-The project is organized around the following modules:
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Tech Stack](#tech-stack)
+- [Core Pipeline](#core-pipeline)
+- [Configuration](#configuration)
+- [API Endpoints](#api-endpoints)
+- [Frontend Development](#frontend-development)
+- [Roadmap](#roadmap)
+- [Recommended Reading](#recommended-reading)
 
-- `rag-bootstrap`
-  - Main business module
-  - Contains the chat pipeline, knowledge base domain, memory management, intent routing, and HTTP APIs
-- `infra`
-  - Infrastructure abstractions for LLMs, embeddings, rerank, and model routing
-- `framework`
-  - Shared conventions, exceptions, web response wrappers, and common infrastructure helpers
-- `rag-mcp`
-  - Example MCP service integration and tool access
-- `rag-web`
-  - Frontend pages and interaction demos
+## Quick Start
+
+### Prerequisites
+
+- **JDK** 17+
+- **Maven** 3.8+
+- **Node.js** 20+ (frontend)
+- **MySQL** 8.0+
+- **Redis** 7.0+
+- **Milvus** 2.4+ (vector database)
+- **RocketMQ** 5.x (message queue)
+- **MinIO** / S3-compatible storage (file storage)
+
+### Backend
+
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd RagTest
+
+# 2. Ensure MySQL, Redis, Milvus, RocketMQ, and MinIO are running
+
+# 3. Update connection settings in:
+#    rag-bootstrap/src/main/resources/application.yaml
+#    Key sections: datasource, redis, milvus, rocketmq, rustfs (S3)
+
+# 4. Build and run
+mvn clean package -DskipTests
+cd rag-bootstrap
+mvn spring-boot:run
+```
+
+The API server starts at `http://localhost:8080`.
+
+### Frontend
+
+```bash
+cd rag-web
+
+# Install dependencies
+npm install
+
+# Start dev server (listens on 0.0.0.0:5173)
+npm run dev
+
+# Production build
+npm run build
+```
+
+## Project Structure
+
+```
+RagTest/
+├── rag-bootstrap/    # Main business module: chat pipeline, KB, memory, intents, APIs
+├── infra/            # Infrastructure: LLM, Embedding, Rerank, model routing, circuit breaker
+├── framework/        # Shared framework: exceptions, response wrappers, utilities
+├── rag-mcp/          # MCP service: tool definitions and SSE integration
+├── rag-web/          # Frontend: React + TypeScript + Vite
+└── docs/             # Documentation
+```
+
+### Module Overview
+
+| Module | Description |
+|--------|-------------|
+| `rag-bootstrap` | Application entry point. Contains the chat controller, RAG pipeline, memory management, intent recognition, knowledge-base retrieval, and file upload. |
+| `infra` | Encapsulates LLM calls, embedding, reranking, multi-model routing with circuit breaker, and provider failover. |
+| `framework` | Unified exception handling, standard response envelope (`R<T>`), and common utilities. |
+| `rag-mcp` | MCP tool server built on Spring AI MCP, supporting SSE connections and tool callbacks. |
+| `rag-web` | Chat interface with streaming answers, knowledge-base management, file upload, and MCP configuration. |
 
 ## Tech Stack
 
-- Backend: Java 17, Spring Boot, Spring AI
-- Data / middleware: Milvus, Redis / Redisson, MyBatis-Plus
-- Frontend: React, TypeScript, Vite
-- Streaming: SSE-based chat responses
+### Backend
 
-## Retrieval Architecture
+| Domain | Technology |
+|--------|------------|
+| Language & Framework | Java 17, Spring Boot 4.0, Spring AI 2.0 |
+| Vector Database | Milvus |
+| Relational Database | MySQL + MyBatis-Plus |
+| Cache & Distributed Lock | Redis / Redisson |
+| Message Queue | RocketMQ |
+| Object Storage | MinIO / S3 (AWS SDK v2) |
+| Authentication | Sa-Token (Redis-backed) |
+| Search Engine | Elasticsearch 8.x |
+| Document Parsing | Apache Tika 2.x |
+| HTTP Client | OkHttp 5.x |
+| Utilities | Hutool, Lombok |
 
-The retrieval flow has been documented separately. The architecture document explains:
+### Frontend
 
-- the SSE chat entrypoint
-- memory loading and compression
-- query rewriting
-- intent recognition
-- `SYSTEM-only` short-circuit logic
-- the default knowledge-base retrieval path
-- prompt assembly and streaming output
+| Domain | Technology |
+|--------|------------|
+| Framework | React 19 |
+| Language | TypeScript 5.9 |
+| Build Tool | Vite 6 |
+| Routing | React Router 7 |
+| Icons | Lucide React |
+| Testing | Vitest + jsdom |
 
-See:
+### AI Capabilities
 
-- [RAG Retrieval Architecture](./docs/rag-retrieval-architecture.md)
+- **Multi-provider**: Bailian (Alibaba Cloud) and SiliconFlow, with priority-based auto selection
+- **Circuit breaker**: Auto-circuits a model after consecutive failures; half-open probe after timeout
+- **Chat models**: Streaming output with optional deep-thinking (reasoning) mode
+- **Embedding**: Qwen3-Embedding-8B, 4096-dimensional vectors
+- **Rerank**: Qwen3-Rerank, with noop fallback for graceful degradation
+- **MCP integration**: Spring AI MCP Client over SSE protocol
 
-## Current Retrieval Flow
+## Core Pipeline
+
+The current pipeline implements a complete loop: memory loading → query rewriting → intent recognition → knowledge-base retrieval → prompt assembly → streaming output.
 
 ```mermaid
 flowchart TD
@@ -99,92 +184,115 @@ flowchart TD
     O3 --> P["MemoryServiceImpl.saveConversation"]
 ```
 
-## Current Frontend UI
+For an in-depth walkthrough, see: [RAG Retrieval Architecture](./docs/rag-retrieval-architecture.md)
 
-![Current Frontend UI](./img.png)
+## Configuration
 
-## Current Implementation Boundary
+All configuration is centralized in `rag-bootstrap/src/main/resources/application.yaml`. Key sections:
 
-The current repository already implements a complete closed loop for:
+### Data & Middleware
 
-- memory-aware chat
-- query rewriting
-- intent recognition
-- default knowledge-base retrieval
-- streaming answer generation
+```yaml
+# MySQL
+spring.datasource.url: jdbc:mysql://127.0.0.1:3306/rag?...
+# Redis
+spring.data.redis.host: 127.0.0.1, port: 6379
+# Milvus
+rag.vector.milvus.uri: http://localhost:19530
+# RocketMQ
+rocketmq.name-server: 127.0.0.1:9876
+# S3 / MinIO
+rustfs.url: http://localhost:9000
+```
 
-However, the following parts are not fully connected to the main runtime path yet:
+### AI Providers
 
-- intent-hit nodes do not yet drive dynamic routing to specific `kbId` or `collectionName`
-- `MCP` intent recognition already exists, but actual tool execution has not been plugged into the main chat orchestration
+Multiple model providers with priority-based selection:
 
-## Current Gaps in Practical Terms
+```yaml
+ai.providers:
+  bailian:       # Alibaba Cloud Bailian
+  siliconflow:   # SiliconFlow
+```
 
-### 1. Intent nodes do not yet route retrieval to concrete knowledge bases
+Each provider supports independent Chat, Embedding, and Rerank endpoints. Model selection is controlled via the `priority` field.
 
-Although the intent tree already supports fields such as:
+### Circuit Breaker
 
-- `kbId`
-- `collectionName`
-- `mcpToolId`
+```yaml
+ai.selection:
+  failure-threshold: 2    # Circuit open after N consecutive failures
+  open-duration-ms: 30000 # Half-open probe after 30s
+```
 
-the current main retrieval path still uses global defaults inside `MilvusRagRetrievalService`, such as:
+## API Endpoints
 
-- the default `collectionName`
-- the default `topK`
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/rag/v1/chat?question=...&chatId=...` | SSE streaming chat (main entry) |
+| `POST` | `/rag/v1/knowledge/upload` | Upload files to knowledge base |
+| `GET` | `/rag/v1/knowledge/list` | List knowledge-base files |
+| `GET` | `/rag/v1/chat/stop/{chatId}` | Stop an active chat stream |
+| `GET` | `/rag/v1/chat/history/{chatId}` | Retrieve chat history |
+| `GET` | `/rag/v1/chat/new` | Create a new chat session |
 
-In other words, the current implementation does **not** yet retrieve from a specific knowledge base based on the matched intent node. It still queries the default collection.
+> See Swagger / OpenAPI docs at runtime for the complete API surface.
 
-### 2. MCP intent execution is not yet part of the main chat pipeline
+## Frontend Development
 
-The system can already classify `MCP` intent nodes, but the main `ChatPipeLine` still does not:
+```bash
+cd rag-web
 
-- choose a tool by `mcpToolId`
-- execute the tool
-- inject tool results into the final prompt
+# Dev mode with HMR
+npm run dev
 
-So the MCP part is currently better described as:
+# Run tests
+npm test
 
-- intent recognition is ready
-- execution orchestration is still pending
+# Production build
+npm run build
 
-### 3. Rerank is available in infrastructure but not enabled in the main path
+# Preview production build
+npm run preview
+```
 
-The `infra` module already contains `RerankService` implementations, but the active RAG path still behaves like this:
+Built with React 19 + Vite 6, using React Router 7 for routing and Lucide React for icons.
 
-`rewrite -> embedding -> Milvus topK retrieval -> prompt assembly -> LLM answer`
+### Main Pages
 
-instead of:
+- **Chat**: Streaming Q&A with thinking-process display, chat history, and stop-generation
+- **Knowledge Base**: File upload, chunking strategy configuration, KB file list
+- **MCP Configuration**: MCP tool management and connection settings
 
-`rewrite -> embedding -> retrieval -> rerank -> prompt assembly -> LLM answer`
+## Roadmap
+
+The current version has a working loop for memory, rewriting, intent recognition, default KB retrieval, and streaming output. Planned improvements:
+
+| Priority | Area | Description |
+|----------|------|-------------|
+| P0 | Intent-driven routing | Route queries to specific `kbId / collectionName` based on matched intent, instead of always querying the default collection |
+| P1 | MCP execution pipeline | MCP intent recognition is ready; connect tool execution into the main chat orchestration |
+| P2 | Rerank integration | `infra` already has `RerankService`; insert reranking between retrieval and prompt assembly |
+| P3 | Multi-intent orchestration | Support combined KB + MCP intent scenarios in a single query |
 
 ## Recommended Reading
 
-If you want to continue evolving this project, start with:
+### Documentation
 
 - [RAG Retrieval Architecture](./docs/rag-retrieval-architecture.md)
 
-Recommended code entry points:
+### Code Entry Points (recommended order)
 
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/controller/RagChatController.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/RagChatServiceImpl.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/pipeline/ChatPipeLine.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/MemoryServiceImpl.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/rewrite/MutiQueryRewriteService.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/IntentResolver.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/DefaultIntentClassifier.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/retrieval/impl/MilvusRagRetrievalService.java`
-- `rag-bootstrap/src/main/resources/prompt/rag-system-prompt.txt`
-
-## Suggested Next Steps
-
-If you want to keep extending the current architecture, the most natural order is:
-
-1. Let intent nodes drive knowledge-base routing
-2. Bring MCP intents into the execution pipeline
-3. Enable rerank between retrieval and prompt assembly
-4. Add multi-intent orchestration for mixed KB / MCP scenarios
+1. `rag-bootstrap/src/main/java/org/puregxl/site/rag/controller/RagChatController.java` — SSE chat endpoint
+2. `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/RagChatServiceImpl.java` — Chat service implementation
+3. `rag-bootstrap/src/main/java/org/puregxl/site/rag/pipeline/ChatPipeLine.java` — Core pipeline orchestration
+4. `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/MemoryServiceImpl.java` — Memory management
+5. `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/rewrite/MutiQueryRewriteService.java` — Query rewriting
+6. `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/IntentResolver.java` — Intent resolution
+7. `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/DefaultIntentClassifier.java` — Intent classification
+8. `rag-bootstrap/src/main/java/org/puregxl/site/rag/retrieval/impl/MilvusRagRetrievalService.java` — Milvus retrieval
+9. `rag-bootstrap/src/main/resources/prompt/rag-system-prompt.txt` — System prompt template
 
 ## One-Sentence Summary
 
-`RagTest` already has a working loop for conversation memory, query rewriting, intent recognition, default knowledge retrieval, and streaming chat output; the next major step is to make intent hits dynamically route knowledge bases and tools instead of stopping at classification.
+`RagTest` implements a complete RAG pipeline from memory → rewrite → intent → retrieval → generation; the next step is to let matched intents dynamically route knowledge bases and drive tool execution — closing the last mile from classification to action.

@@ -1,60 +1,141 @@
 # RagTest
 
-英文版文档见：
+[![Java](https://img.shields.io/badge/Java-17-blue.svg)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Spring AI](https://img.shields.io/badge/Spring%20AI-2.0.0--M2-green.svg)](https://spring.io/projects/spring-ai)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646cff.svg)](https://vitejs.dev/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-- [README_EN.md](./README_EN.md)
+> 一个围绕 RAG 问答、知识库管理、意图识别、MCP 工具接入和流式对话构建的多模块实验项目。
 
-`RagTest` 是一个围绕 RAG 问答、知识库管理、意图识别、MCP 工具接入和流式对话构建的多模块实验项目。
+[English Documentation](./README_EN.md)
 
-当前仓库主要聚焦于一个已经跑通的端到端闭环，包含：
+## 目录
 
-- SSE 流式问答
-- 会话记忆
-- 问题改写
-- 意图识别
-- 默认知识库检索
-- 大模型流式输出
+- [快速开始](#快速开始)
+- [项目结构](#项目结构)
+- [技术栈](#技术栈)
+- [核心流程](#核心流程)
+- [配置概览](#配置概览)
+- [API 接口](#api-接口)
+- [前端开发](#前端开发)
+- [演进路线](#演进路线)
+- [推荐阅读](#推荐阅读)
 
-## 仓库结构
+## 快速开始
 
-当前仓库主要包含以下模块：
+### 环境要求
 
-- `rag-bootstrap`
-  - 主业务模块
-  - 包含问答链路、知识库、记忆、意图识别和 API 接口
-- `infra`
-  - 大模型、Embedding、Rerank、模型路由等基础能力封装
-- `framework`
-  - 通用约定、异常、Web 返回体和基础设施封装
-- `rag-mcp`
-  - MCP 服务示例与工具接入
-- `rag-web`
-  - 前端页面与交互演示
+- **JDK** 17+
+- **Maven** 3.8+
+- **Node.js** 20+（前端）
+- **MySQL** 8.0+
+- **Redis** 7.0+
+- **Milvus** 2.4+（向量数据库）
+- **RocketMQ** 5.x（消息队列）
+- **MinIO** / S3 兼容存储（文件存储）
+
+### 后端启动
+
+```bash
+# 1. 克隆仓库
+git clone <repo-url>
+cd RagTest
+
+# 2. 确保 MySQL、Redis、Milvus、RocketMQ、MinIO 已启动
+
+# 3. 修改数据库和中间件连接信息
+# 编辑 rag-bootstrap/src/main/resources/application.yaml
+# 主要配置：datasource、redis、milvus、rocketmq、rustfs(s3)
+
+# 4. 编译并启动
+mvn clean package -DskipTests
+cd rag-bootstrap
+mvn spring-boot:run
+```
+
+后端启动后，API 服务运行在 `http://localhost:8080`。
+
+### 前端启动
+
+```bash
+cd rag-web
+
+# 安装依赖
+npm install
+
+# 开发模式启动（默认监听 0.0.0.0:5173）
+npm run dev
+
+# 构建生产版本
+npm run build
+```
+
+## 项目结构
+
+```
+RagTest/
+├── rag-bootstrap/    # 主业务模块：问答链路、知识库、记忆、意图识别、API
+├── infra/            # 基础设施：LLM、Embedding、Rerank、模型路由、熔断
+├── framework/        # 通用框架：异常处理、Web 返回体、基础设施封装
+├── rag-mcp/          # MCP 服务：工具定义与 SSE 接入
+├── rag-web/          # 前端：React + TypeScript + Vite
+└── docs/             # 项目文档
+```
+
+### 模块职责
+
+| 模块 | 说明 |
+|------|------|
+| `rag-bootstrap` | 应用入口，包含 Chat 控制器、问答 Pipeline、记忆管理、意图识别、知识库检索、文件上传等核心业务 |
+| `infra` | 封装大模型调用、Embedding 向量化、Rerank 重排序、多模型路由与熔断切换 |
+| `framework` | 统一异常处理、标准返回体（`R<T>`）、通用工具类 |
+| `rag-mcp` | 基于 Spring AI MCP 的工具服务，支持 SSE 连接与工具回调 |
+| `rag-web` | 对话界面，支持流式问答、知识库管理、文件上传、MCP 配置等 |
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot、Spring AI
-- 数据与中间件：Milvus、Redis / Redisson、MyBatis-Plus
-- 前端：React、TypeScript、Vite
-- 流式通信：基于 SSE 的问答输出
+### 后端
 
-## 检索架构
+| 领域 | 技术 |
+|------|------|
+| 语言 & 框架 | Java 17、Spring Boot 4.0、Spring AI 2.0 |
+| 向量数据库 | Milvus |
+| 关系数据库 | MySQL + MyBatis-Plus |
+| 缓存 & 分布式锁 | Redis / Redisson |
+| 消息队列 | RocketMQ |
+| 对象存储 | MinIO / S3（AWS SDK v2） |
+| 认证鉴权 | Sa-Token（Redis 集成） |
+| 搜索引擎 | Elasticsearch 8.x |
+| 文档解析 | Apache Tika 2.x |
+| HTTP 客户端 | OkHttp 5.x |
+| 工具库 | Hutool、Lombok |
 
-当前项目的检索主流程已经整理成专门文档，详细说明了：
+### 前端
 
-- SSE 问答入口
-- 记忆加载与压缩
-- 问题改写
-- 意图识别
-- `SYSTEM-only` 短路逻辑
-- 默认知识库检索链路
-- Prompt 组装与流式输出
+| 领域 | 技术 |
+|------|------|
+| 框架 | React 19 |
+| 语言 | TypeScript 5.9 |
+| 构建工具 | Vite 6 |
+| 路由 | React Router 7 |
+| 图标 | Lucide React |
+| 测试 | Vitest + jsdom |
 
-详细文档见：
+### AI 能力
 
-- [RAG 检索全流程架构文档](./docs/rag-retrieval-architecture.md)
+- **多模型提供商**：百炼（阿里云）、硅基流动（SiliconFlow），支持按优先级自动切换
+- **模型熔断**：连续失败达阈值后自动熔断，超时后半开探测
+- **Chat 模型**：支持推理模式（deep thinking）的流式输出
+- **Embedding**：Qwen3-Embedding-8B，4096 维向量
+- **Rerank**：Qwen3-Rerank，支持 noop 降级
+- **MCP 集成**：Spring AI MCP Client，SSE 协议连接
 
-## 当前检索主流程图
+## 核心流程
+
+当前已实现"记忆加载 → 问题改写 → 意图识别 → 知识库检索 → Prompt 组装 → 流式输出"的完整闭环。
 
 ```mermaid
 flowchart TD
@@ -103,84 +184,115 @@ flowchart TD
     O3 --> P["MemoryServiceImpl.saveConversation"]
 ```
 
-## 当前前端 UI
+详细说明见：[RAG 检索全流程架构文档](./docs/rag-retrieval-architecture.md)
 
-![当前前端 UI](./img.png)
+## 配置概览
 
-## 当前实现边界
+项目配置集中在 `rag-bootstrap/src/main/resources/application.yaml`，关键配置项如下：
 
-当前仓库已经实现了“记忆 + 改写 + 意图识别 + 默认知识库检索 + 流式输出”的完整闭环，但下面两块还没有完全接入主流程：
+### 数据与中间件
 
-- 还没有按命中的意图节点动态路由到具体 `kbId / collectionName`
-- `MCP` 意图识别已经具备，但工具调用链路还没有进入主问答编排
+```yaml
+# MySQL
+spring.datasource.url: jdbc:mysql://127.0.0.1:3306/rag?...
+# Redis
+spring.data.redis.host: 127.0.0.1, port: 6379
+# Milvus
+rag.vector.milvus.uri: http://localhost:19530
+# RocketMQ
+rocketmq.name-server: 127.0.0.1:9876
+# S3 / MinIO
+rustfs.url: http://localhost:9000
+```
 
-## 当前还缺什么
+### AI 提供商
 
-### 1. 意图节点还没有真正驱动知识库路由
+项目支持多模型提供商，按优先级自动选择：
 
-虽然意图树节点已经支持如下字段：
+```yaml
+ai.providers:
+  bailian:       # 阿里云百炼
+  siliconflow:   # 硅基流动
+```
 
-- `kbId`
-- `collectionName`
-- `mcpToolId`
+每个提供商可独立配置 Chat、Embedding、Rerank 端点，模型通过 `priority` 字段控制选择优先级。
 
-但当前主检索链路里，`MilvusRagRetrievalService` 仍然使用的是全局默认配置，例如：
+### 模型熔断
 
-- 默认 `collectionName`
-- 默认 `topK`
+```yaml
+ai.selection:
+  failure-threshold: 2    # 连续失败 N 次后熔断
+  open-duration-ms: 30000 # 熔断 30s 后半开探测
+```
 
-也就是说，当前还不是“按命中的意图节点路由到具体知识库”，而是“统一查默认知识库集合”。
+## API 接口
 
-### 2. MCP 工具执行尚未进入主问答流程
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/rag/v1/chat?question=...&chatId=...` | SSE 流式问答（主入口） |
+| `POST` | `/rag/v1/knowledge/upload` | 文件上传到知识库 |
+| `GET` | `/rag/v1/knowledge/list` | 知识库文件列表 |
+| `GET` | `/rag/v1/chat/stop/{chatId}` | 停止对话流 |
+| `GET` | `/rag/v1/chat/history/{chatId}` | 获取对话历史 |
+| `GET` | `/rag/v1/chat/new` | 创建新对话 |
 
-当前系统已经可以识别 `MCP` 类型意图节点，但主 `ChatPipeLine` 还没有完成以下工作：
+> 完整接口以实际运行时的 Swagger / OpenAPI 文档为准。
 
-- 根据 `mcpToolId` 选择具体工具
-- 发起工具调用
-- 将工具结果注入最终 Prompt
+## 前端开发
 
-所以目前 MCP 相关能力更准确的描述是：
+```bash
+cd rag-web
 
-- 意图识别已具备
-- 执行编排仍待接入
+# 开发模式（带 HMR）
+npm run dev
 
-### 3. Rerank 还没有接入主流程
+# 运行测试
+npm test
 
-`infra` 模块中已经存在 `RerankService` 相关实现，但当前 RAG 主链路仍然是：
+# 生产构建
+npm run build
 
-`改写 -> embedding -> Milvus TopK 检索 -> Prompt 组装 -> 大模型回答`
+# 预览构建产物
+npm run preview
+```
 
-而不是：
+前端基于 React 19 + Vite 6，使用 React Router 7 管理路由，Lucide React 提供图标。
 
-`改写 -> embedding -> 检索 -> rerank -> Prompt 组装 -> 大模型回答`
+### 主要页面
 
-## 建议阅读顺序
+- **对话页**：流式问答，支持思考过程展示、对话历史、停止生成
+- **知识库管理**：文件上传、分块策略配置、知识库列表
+- **MCP 配置**：MCP 工具管理与连接配置
 
-如果你准备继续演进这条链路，建议先阅读：
+## 演进路线
+
+当前版本已完成"会话记忆 + 问题改写 + 意图识别 + 默认知识库检索 + 流式回答"闭环。以下为后续规划：
+
+| 优先级 | 方向 | 说明 |
+|--------|------|------|
+| P0 | 意图驱动路由 | 意图节点动态路由到具体 `kbId / collectionName`，而非统一查默认集合 |
+| P1 | MCP 执行链路 | MCP 意图识别已具备，接入工具调用到主问答编排 |
+| P2 | Rerank 接入 | `infra` 已有 RerankService，接入检索与 Prompt 组装之间 |
+| P3 | 多意图编排 | 支持 KB / MCP 混合场景下的多意图联合处理 |
+
+## 推荐阅读
+
+### 文档
 
 - [RAG 检索全流程架构文档](./docs/rag-retrieval-architecture.md)
 
-推荐优先阅读的代码入口：
+### 代码入口（推荐顺序）
 
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/controller/RagChatController.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/RagChatServiceImpl.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/pipeline/ChatPipeLine.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/MemoryServiceImpl.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/rewrite/MutiQueryRewriteService.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/IntentResolver.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/DefaultIntentClassifier.java`
-- `rag-bootstrap/src/main/java/org/puregxl/site/rag/retrieval/impl/MilvusRagRetrievalService.java`
-- `rag-bootstrap/src/main/resources/prompt/rag-system-prompt.txt`
-
-## 建议的后续演进方向
-
-如果后续要继续完善当前架构，比较自然的顺序是：
-
-1. 让意图节点真正驱动知识库路由
-2. 让 `MCP` 意图进入执行链路
-3. 在检索与 Prompt 组装之间启用 rerank
-4. 支持 KB / MCP 混合场景下的多意图编排
+1. `rag-bootstrap/src/main/java/org/puregxl/site/rag/controller/RagChatController.java` — SSE 问答入口
+2. `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/RagChatServiceImpl.java` — 对话服务实现
+3. `rag-bootstrap/src/main/java/org/puregxl/site/rag/pipeline/ChatPipeLine.java` — 核心 Pipeline 编排
+4. `rag-bootstrap/src/main/java/org/puregxl/site/rag/service/impl/MemoryServiceImpl.java` — 记忆管理
+5. `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/rewrite/MutiQueryRewriteService.java` — 问题改写
+6. `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/IntentResolver.java` — 意图解析
+7. `rag-bootstrap/src/main/java/org/puregxl/site/rag/core/intent/DefaultIntentClassifier.java` — 意图分类
+8. `rag-bootstrap/src/main/java/org/puregxl/site/rag/retrieval/impl/MilvusRagRetrievalService.java` — Milvus 检索
+9. `rag-bootstrap/src/main/resources/prompt/rag-system-prompt.txt` — 系统 Prompt 模板
 
 ## 一句话总结
 
-`RagTest` 目前已经具备“会话记忆 + 问题改写 + 意图识别 + 默认知识库检索 + 流式回答”的完整闭环；下一步的重点，是让命中的意图真正驱动知识库和工具，而不是停留在分类层。
+`RagTest` 已实现从"记忆 → 改写 → 意图 → 检索 → 生成"的 RAG 全链路闭环；下一步的重点是让命中的意图真正驱动知识库路由和工具调用，完成从分类到执行的最后一公里。

@@ -4,6 +4,7 @@ target/
 !**/src/test/**/target/
 .kotlin
 .superpowers/
+.ragenteval-main/
 ragenteval-main/
 ### IntelliJ IDEA ###
 .idea/modules.xml
@@ -38,5 +39,4 @@ build/
 
 ### Mac OS ###
 .DS_Store
-
 

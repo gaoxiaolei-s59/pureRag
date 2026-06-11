@@ -7,7 +7,7 @@ import {
   Moon,
   Sun
 } from "lucide-react";
-import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
 import { useAppTheme } from "../theme";
 import { useAuthGuard } from "../../hooks/useAuthGuard";
 import { clearAuthStorage, getStoredUserName } from "../../modules/auth/storage";
@@ -16,7 +16,6 @@ import { logout } from "../../modules/auth/services/auth";
 export function DashboardLayout() {
   const { isAuthenticated } = useAuthGuard();
   const navigate = useNavigate();
-  const location = useLocation();
   const { theme, isDarkTheme, toggleTheme } = useAppTheme();
 
   if (!isAuthenticated) {
@@ -27,73 +26,85 @@ export function DashboardLayout() {
     try {
       await logout();
     } catch {
-      // 后端登出失败时仍清理本地态，避免用户卡住
+      // 后端登出失败时仍清理本地态
     }
     clearAuthStorage();
     navigate("/login", { replace: true });
   }
 
+  const userName = getStoredUserName();
+  const userInitial = userName.slice(0, 1).toUpperCase() || "A";
+
   return (
     <main className="dashboard-shell" data-theme={theme}>
+      {/* ===== Sidebar ===== */}
       <aside className="dashboard-sidebar">
+        {/* Brand */}
         <div className="brand-block">
           <div className="brand-mark">
-            <Bot size={22} />
+            <Bot size={18} />
           </div>
           <div>
-            <strong>PureAgent 管理后台</strong>
-            <span>Knowledge Console</span>
+            <strong>PureAgent</strong>
+            <span>管理后台</span>
           </div>
         </div>
 
+        {/* Navigation */}
         <nav className="dashboard-nav">
-          <NavLink to="/chat" className="nav-link">
-            <MessageSquare size={18} />
-            智能问答
-          </NavLink>
-          <NavLink to="/knowledge" className="nav-link">
-            <Database size={18} />
+          <NavLink to="/knowledge" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <Database size={16} />
             知识库管理
           </NavLink>
-          <NavLink to="/intent-tree" className="nav-link">
-            <Layers3 size={18} />
+          <NavLink to="/intent-tree" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <Layers3 size={16} />
             意图树配置
+          </NavLink>
+          <NavLink to="/chat" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <MessageSquare size={16} />
+            智能问答
           </NavLink>
         </nav>
 
-        <div className="sidebar-card">
-          <span className="sidebar-card-label">当前分区</span>
-          <strong>{location.pathname.includes("intent") ? "意图配置" : "知识管理"}</strong>
-          <p>集中管理知识库、文档处理和意图树配置，聊天入口保持在独立前台页面。</p>
+        {/* Bottom: user + logout */}
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <span className="sidebar-avatar">{userInitial}</span>
+            <span className="sidebar-username">{userName || "管理员"}</span>
+          </div>
+          <button
+            type="button"
+            className="sidebar-logout"
+            title="退出登录"
+            onClick={() => void handleLogout()}
+          >
+            <LogOut size={15} />
+          </button>
         </div>
-
-        <button type="button" className="outline-button sidebar-action" onClick={() => void handleLogout()}>
-          <LogOut size={16} />
-          退出登录
-        </button>
       </aside>
 
+      {/* ===== Main ===== */}
       <section className="dashboard-main">
         <header className="dashboard-topbar">
-          <div>
-            <span className="eyebrow">Admin Console</span>
-            <h1>知识库与意图管理</h1>
-          </div>
+          <h1 className="dashboard-title">知识库与意图管理</h1>
           <div className="dashboard-topbar-actions">
-            <NavLink to="/chat" className="outline-button">
-              <MessageSquare size={16} />
+            <NavLink to="/chat" className="topbar-link-button">
+              <MessageSquare size={15} />
               返回聊天
             </NavLink>
             <button
               type="button"
-              className="outline-button theme-admin-button"
+              className="topbar-icon-button"
               aria-label={isDarkTheme ? "切换浅色模式" : "切换深色模式"}
               title={isDarkTheme ? "切换浅色模式" : "切换深色模式"}
               onClick={toggleTheme}
             >
-              {isDarkTheme ? <Sun size={16} /> : <Moon size={16} />}
+              {isDarkTheme ? <Sun size={15} /> : <Moon size={15} />}
             </button>
-            <div className="user-pill">{getStoredUserName()}</div>
+            <div className="topbar-user-pill">
+              <span className="topbar-avatar">{userInitial}</span>
+              {userName}
+            </div>
           </div>
         </header>
 

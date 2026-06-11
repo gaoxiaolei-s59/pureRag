@@ -4,10 +4,9 @@ type StatCardProps = {
   icon: ReactNode;
   label: string;
   value: number | string;
-  hint?: string;
 };
 
-export function StatCard({ icon, label, value, hint = "实时" }: StatCardProps) {
+export function StatCard({ icon, label, value }: StatCardProps) {
   return (
     <div className="stat-card">
       <span className="stat-card-icon">{icon}</span>
@@ -15,7 +14,6 @@ export function StatCard({ icon, label, value, hint = "实时" }: StatCardProps)
         <small>{label}</small>
         <strong>{value}</strong>
       </div>
-      <em>{hint}</em>
     </div>
   );
 }

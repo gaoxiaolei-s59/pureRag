@@ -80,7 +80,7 @@
   box-shadow: var(--shadow-soft);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .stat-card-icon {
@@ -108,10 +108,11 @@
 
 .stat-card-content strong {
   display: block;
-  margin-top: 4px;
-  font-size: 22px;
+  margin-top: 3px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.5px;
+  line-height: 1;
 }
 
 .stat-card em {
