@@ -23,7 +23,7 @@
 
 **Files:** 无
 
-- [ ] **Step 1: 装 ffmpeg、确认仓库同步**
+- [x] **Step 1: 装 ffmpeg、确认仓库同步**
 
 ```bash
 brew install ffmpeg 2>&1 | tail -1
@@ -32,7 +32,7 @@ cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && git pull --ff-only && git stat
 
 预期：ffmpeg 可用（`ffmpeg -version` 出版本号）；`## main...origin/main` 无落后无超前、工作区干净。
 
-- [ ] **Step 2: 基线构建**
+- [x] **Step 2: 基线构建**
 
 ```bash
 cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && $PNPM build 2>&1 | tail -3
@@ -47,7 +47,7 @@ cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && $PNPM build 2>&1 | tail -3
 - Create: `public/home-banner-poster.jpg`
 - 备份: `~/Downloads/home-banner-video.orig.mp4`
 
-- [ ] **Step 1: 备份 + 压缩 + 抽首帧**
+- [x] **Step 1: 备份 + 压缩 + 抽首帧**
 
 ```bash
 cd /Users/gaoxaiolei/IdeaProjects/puregxl.site
@@ -59,7 +59,7 @@ ls -lh public/home-banner-video.mp4 public/home-banner-poster.jpg
 
 预期：mp4 ≤5MB（若 >5MB 把 crf 提到 30 重压一次）；poster.jpg 出现（几十~几百 KB）。`-an` 去掉音轨（banner 本来就 muted）。
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add public/home-banner-video.mp4 public/home-banner-poster.jpg && git commit -m "perf: 压缩首页视频(27MB→<5MB)并加首帧海报"
@@ -71,7 +71,7 @@ git add public/home-banner-video.mp4 public/home-banner-poster.jpg && git commit
 - Modify: `src/config.ts`（navBarConfig.links）
 - Delete: `.github/workflows/biome.yml`、`.github/workflows/build.yml`
 
-- [ ] **Step 1: navbar 加外链**
+- [x] **Step 1: navbar 加外链**
 
 `src/config.ts` 的 `navBarConfig.links` 数组，在 GitHub 外链对象后追加：
 
@@ -83,7 +83,7 @@ git add public/home-banner-video.mp4 public/home-banner-poster.jpg && git commit
 		},
 ```
 
-- [ ] **Step 2: 删冗余 workflow + 构建验证 + Commit**
+- [x] **Step 2: 删冗余 workflow + 构建验证 + Commit**
 
 ```bash
 cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && git rm -q .github/workflows/biome.yml .github/workflows/build.yml
@@ -101,7 +101,7 @@ git add -A && git commit -m "feat: 导航加短链接入口；ci: 移除与 depl
 - Modify: `src/layouts/Layout.astro`（body 级视频控制脚本）
 - Create: `src/components/effects/HeroOverlay.astro`
 
-- [ ] **Step 1: 常量解耦**
+- [x] **Step 1: 常量解耦**
 
 `constants.ts` 中 `export const BANNER_HEIGHT_HOME = BANNER_HEIGHT + BANNER_HEIGHT_EXTEND;` 改为：
 
@@ -109,7 +109,7 @@ git add -A && git commit -m "feat: 导航加短链接入口；ci: 移除与 depl
 export const BANNER_HEIGHT_HOME = 100;
 ```
 
-- [ ] **Step 2: MainGridLayout 首页面板下移到 100vh**
+- [x] **Step 2: MainGridLayout 首页面板下移到 100vh**
 
 `mainPanelTop` 三元改为（保持文章页原公式不变）：
 
@@ -123,7 +123,7 @@ const mainPanelTop = bannerVisible
 
 原理：首页 `#main-grid` 会再被 `.enable-banner.is-home` 平移 `--banner-height-extend`（≈30vh 取 4px 整），净起点 ≈ `100vh - 3.5rem`。需要 import `BANNER_HEIGHT_HOME`（该文件已 import 其他常量，从同处加）。
 
-- [ ] **Step 3: video 标签改造（poster + 延迟决定加载）**
+- [x] **Step 3: video 标签改造（poster + 延迟决定加载）**
 
 MainGridLayout 中用户的 `<video ...><source .../></video>` 整体替换为（去掉 `<source>` 子节点，逻辑交给 Layout 脚本）：
 
@@ -141,7 +141,7 @@ MainGridLayout 中用户的 `<video ...><source .../></video>` 整体替换为�
         ></video>}
 ```
 
-- [ ] **Step 4: 挂 HeroOverlay**
+- [x] **Step 4: 挂 HeroOverlay**
 
 紧跟黑色遮罩 `<div class="absolute inset-0 z-20 bg-black/20 pointer-events-none"></div>` 之后、`#banner` 闭合前加：
 
@@ -151,7 +151,7 @@ MainGridLayout 中用户的 `<video ...><source .../></video>` 整体替换为�
 
 并在 frontmatter import：`import HeroOverlay from "../components/effects/HeroOverlay.astro";`
 
-- [ ] **Step 5: 新建 HeroOverlay.astro（完整内容）**
+- [x] **Step 5: 新建 HeroOverlay.astro（完整内容）**
 
 ```astro
 ---
@@ -197,7 +197,7 @@ import { siteConfig } from "../../config";
 </script>
 ```
 
-- [ ] **Step 6: Layout 加视频控制脚本（与 GoatCounter 脚本并列处）**
+- [x] **Step 6: Layout 加视频控制脚本（与 GoatCounter 脚本并列处）**
 
 `src/layouts/Layout.astro` 的 GoatCounter `<script is:inline>` 之后加：
 
@@ -233,7 +233,7 @@ import { siteConfig } from "../../config";
 		</script>
 ```
 
-- [ ] **Step 7: 构建验证 + Commit**
+- [x] **Step 7: 构建验证 + Commit**
 
 ```bash
 cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && $PNPM build 2>&1 | tail -2
@@ -250,7 +250,7 @@ git add -A && git commit -m "feat: 首页 100vh 视频 Hero + 打字机副标题
 - Create: `src/components/effects/MouseEffects.astro`
 - Modify: `src/layouts/Layout.astro`（body 内挂载）
 
-- [ ] **Step 1: 新建 MouseEffects.astro（完整内容）**
+- [x] **Step 1: 新建 MouseEffects.astro（完整内容）**
 
 ```astro
 <canvas id="fx-canvas" style="position:fixed;inset:0;z-index:9999;pointer-events:none;"></canvas>
@@ -328,7 +328,7 @@ git add -A && git commit -m "feat: 首页 100vh 视频 Hero + 打字机副标题
 </style>
 ```
 
-- [ ] **Step 2: Layout 挂载 + 构建 + Commit**
+- [x] **Step 2: Layout 挂载 + 构建 + Commit**
 
 `Layout.astro` 的 `<slot />` 之后（`#page-height-extend` div 之前）加一行 `<MouseEffects />`，frontmatter import：`import MouseEffects from "@components/effects/MouseEffects.astro";`
 
@@ -346,11 +346,11 @@ git add -A && git commit -m "feat: 鼠标特效引擎（光标圈/星尘拖尾/�
 - Create: `src/components/effects/ReadingProgress.astro`
 - Modify: `src/layouts/Layout.astro`（挂载）、`src/components/effects/MouseEffects.astro`（追加 tilt 委托）
 
-- [ ] **Step 1: PostCard 根元素加属性**
+- [x] **Step 1: PostCard 根元素加属性**
 
 打开 `src/components/PostCard.astro`，找到根元素（带 `card-base` class 的第一个 `<div class:list=...>`），在标签上添加 `data-tilt`。
 
-- [ ] **Step 2: MouseEffects 追加 tilt 委托（在 `tick();` 调用行之前插入）**
+- [x] **Step 2: MouseEffects 追加 tilt 委托（在 `tick();` 调用行之前插入）**
 
 ```js
 	var tiltEl = null;
@@ -370,7 +370,7 @@ git add -A && git commit -m "feat: 鼠标特效引擎（光标圈/星尘拖尾/�
 	}, { passive: true });
 ```
 
-- [ ] **Step 3: 新建 ReadingProgress.astro（完整内容）**
+- [x] **Step 3: 新建 ReadingProgress.astro（完整内容）**
 
 ```astro
 <div id="reading-progress" style="position:fixed;top:0;left:0;height:2px;width:0;z-index:10000;background:var(--primary);transition:width .1s linear;"></div>
@@ -394,7 +394,7 @@ git add -A && git commit -m "feat: 鼠标特效引擎（光标圈/星尘拖尾/�
 </script>
 ```
 
-- [ ] **Step 4: Layout 挂载 + 构建 + Commit**
+- [x] **Step 4: Layout 挂载 + 构建 + Commit**
 
 `<MouseEffects />` 旁边加 `<ReadingProgress />` 并 import（`@components/effects/ReadingProgress.astro`）。
 
@@ -410,7 +410,7 @@ git add -A && git commit -m "feat: 文章卡片 3D 倾斜 + 阅读进度条"
 
 **Files:** 无
 
-- [ ] **Step 1: 起预览服务并 spot check**
+- [x] **Step 1: 起预览服务并 spot check**
 
 ```bash
 cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && ($PNPM preview --port 4321 &) && sleep 3
@@ -420,7 +420,7 @@ curl -s http://localhost:4321/posts/hello-world/ | grep -oE "reading-progress|cu
 
 预期：首页四个标记齐全；文章页两个标记齐全。
 
-- [ ] **Step 2: 浏览器肉眼验收（若 Claude Preview 工具可用则截图自检，否则提示用户开 http://localhost:4321 看）**
+- [x] **Step 2: 浏览器肉眼验收（若 Claude Preview 工具可用则截图自检，否则提示用户开 http://localhost:4321 看）**
 
 检查项：视频铺满首屏、打字机轮播、点击下滑箭头平滑滚动、三种鼠标效果、卡片悬停倾斜、文章页进度条、窄窗口（模拟移动）无鼠标特效。完成后 `kill %1` 关闭预览。
 
@@ -428,7 +428,7 @@ curl -s http://localhost:4321/posts/hello-world/ | grep -oE "reading-progress|cu
 
 **Files:** 无（执行 deploy.sh）
 
-- [ ] **Step 1: push 源码 + 本地发布**
+- [x] **Step 1: push 源码 + 本地发布**
 
 ```bash
 cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && git push origin main; ./deploy.sh 2>&1 | tail -3
@@ -436,7 +436,7 @@ cd /Users/gaoxaiolei/IdeaProjects/puregxl.site && git push origin main; ./deploy
 
 预期：`✅ 已部署`（push 即使触发 Actions 失败也不影响——deploy.yml 在 billing 解锁前会红，忽略）。
 
-- [ ] **Step 2: 线上 spot check**
+- [x] **Step 2: 线上 spot check**
 
 ```bash
 curl -s --resolve puregxl.site:443:101.35.5.210 https://puregxl.site/ | grep -oE "hero-overlay|fx-canvas|banner-poster|短链接" | sort | uniq -c
@@ -449,8 +449,8 @@ ssh ubuntu@101.35.5.210 'systemctl is-active nginx goatcounter && sudo docker ps
 
 ### Task 8: 收尾
 
-- [ ] **Step 1: 按 spec 第 5 节验收清单逐项核对并记录结果**
-- [ ] **Step 2: 在 RagTest 仓库把本计划文件的复选框勾掉并提交；向用户交付总结（含：原视频备份位置、打字机文案改法 phrases 数组、Actions 解锁后自动恢复说明）**
+- [x] **Step 1: 按 spec 第 5 节验收清单逐项核对并记录结果**
+- [x] **Step 2: 在 RagTest 仓库把本计划文件的复选框勾掉并提交；向用户交付总结（含：原视频备份位置、打字机文案改法 phrases 数组、Actions 解锁后自动恢复说明）**
 
 ---
 
