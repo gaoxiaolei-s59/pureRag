@@ -42,11 +42,11 @@ public class RetrievalEngine implements RetrievalService{
         List<CompletableFuture<SubQuestionContext>> tasks = safeSubIntents.stream()
                 .map(subIntent -> CompletableFuture.supplyAsync(
                         () -> {
-                            try{
+                            try {
                                 return buildSubQuestionContext(subIntent, defaultTopK, currentUserId);
                             } catch (Exception e) {
                                 log.error("子问题上下文构建失败，降级为空上下文，question：{}", subIntent.getSubQuestion(), e);
-                                return new SubQuestionContext(subIntent.getSubQuestion(), "", "", Map.of());
+                                return new SubQuestionContext(subIntent.getSubQuestion(), "", "", Map.of(), List.of());
                             }
                         },
                         retrievalBuildExecutor
@@ -75,10 +75,18 @@ public class RetrievalEngine implements RetrievalService{
                 .filter(Objects::nonNull)
                 .forEach(intentChunks::putAll);
 
+        List<RetrievedChunk> retrievedChunks = contexts.stream()
+                .map(SubQuestionContext::retrievedChunks)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .filter(Objects::nonNull)
+                .toList();
+
         return RetrievalContext.builder()
                 .kbContext(kbContext)
                 .mcpContext(mcpContext)
                 .intentChunks(intentChunks)
+                .retrievedChunks(retrievedChunks)
                 .build();
     }
 
@@ -91,7 +99,7 @@ public class RetrievalEngine implements RetrievalService{
      */
     private SubQuestionContext buildSubQuestionContext(SubQuestionIntent subIntent, int TopK, String currentUserId) {
         if (subIntent == null || StrUtil.isBlank(subIntent.getSubQuestion())) {
-            return new SubQuestionContext("", "", "", Map.of());
+            return new SubQuestionContext("", "", "", Map.of(), List.of());
         }
         List<NodeScore> nodeScores = CollUtil.isEmpty(subIntent.getNodeScores()) ? List.of() : subIntent.getNodeScores();
 
@@ -103,7 +111,7 @@ public class RetrievalEngine implements RetrievalService{
 
         String kbContext = buildKbContext(subIntent.getSubQuestion(), search);
 
-        return new SubQuestionContext(subIntent.getSubQuestion(), kbContext, mcpContext, Map.of());
+        return new SubQuestionContext(subIntent.getSubQuestion(), kbContext, mcpContext, Map.of(), search);
     }
 
     /**
@@ -173,7 +181,8 @@ public class RetrievalEngine implements RetrievalService{
     private record SubQuestionContext(String question,
                                       String kbContext,
                                       String mcpContext,
-                                      Map<String, List<RetrievedChunk>> intentChunks) {
+                                      Map<String, List<RetrievedChunk>> intentChunks,
+                                      List<RetrievedChunk> retrievedChunks) {
     }
 
     private record McpToolResult(String toolName, String result) {

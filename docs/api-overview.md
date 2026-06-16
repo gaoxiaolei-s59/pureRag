@@ -361,6 +361,44 @@
 
 ## RAG 聊天与记忆
 
+### Pipeline 评测旁路
+
+- 方法：`POST`
+- 路径：`/rag/eval/v1/pipeline`
+- 说明：复用 `ChatPipeLine` 生成前的完整流程，用于离线评测改写、意图识别、SYSTEM 判定、检索命中和上下文拼装结果；不会触发最终大模型生成，也不会返回 SSE。
+- 请求体：`RagPipelineEvalRequest`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `userQuestion` | string | 是 | 用户问题 |
+| `conversationId` | string | 否 | 会话 ID，传入后会复用聊天记忆 |
+| `deepThinking` | boolean | 否 | 是否开启深度思考标记，默认 `false` |
+
+- 返回数据：`RagPipelineEvalResponse`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `userQuestion` | string | 原始用户问题 |
+| `conversationId` | string | 会话 ID |
+| `deepThinking` | boolean | 是否开启深度思考 |
+| `historyMessages` | object[] | 参与改写的历史消息，字段包含 `role`、`content` |
+| `rewrittenQuestion` | string | 改写后的问题 |
+| `rewrittenSubQuestions` | string[] | 改写阶段输出的子问题列表 |
+| `subQuestions` | object[] | 子问题评测结果，字段包含 `subQuestion`、`intentCandidates` |
+| `predictedIntentIds` | string[] | 每个子问题 Top1 意图 ID |
+| `allSystemOnly` | boolean | 是否全部命中 SYSTEM 意图 |
+| `hasKb` | boolean | 是否拼装了知识库上下文 |
+| `hasMcp` | boolean | 是否拼装了 MCP 上下文 |
+| `retrievedChunkIds` | string[] | 最终进入上下文的 Chunk ID 列表 |
+| `retrievedDocIds` | string[] | 最终进入上下文的文档 ID 列表 |
+| `retrievedChunks` | object[] | 最终进入上下文的 Chunk 明细，字段包含 `chunkId`、`docId`、`text`、`score` |
+| `kbContext` | string | 最终知识库上下文文本 |
+| `mcpContext` | string | 最终 MCP 上下文文本 |
+| `rewriteLatencyMs` | number | 改写阶段耗时，毫秒 |
+| `intentLatencyMs` | number | 意图识别阶段耗时，毫秒 |
+| `retrievalLatencyMs` | number | 检索阶段耗时，毫秒；纯 SYSTEM 时为 `0` |
+| `totalLatencyMs` | number | 整条前置链路总耗时，毫秒 |
+
 ### RAG 流式聊天
 
 - 方法：`GET`

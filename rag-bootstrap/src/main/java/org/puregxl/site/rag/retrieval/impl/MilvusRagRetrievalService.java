@@ -31,6 +31,7 @@ import java.util.Objects;
 public class MilvusRagRetrievalService implements RagRetrievalService {
 
     private static final String CHUNK_ID_FIELD = "chunk_id";
+    private static final String DOC_ID_FIELD = "doc_id";
     private static final String CONTENT_FIELD = "content";
     private static final String EMBEDDING_FIELD = "embedding";
 
@@ -48,7 +49,7 @@ public class MilvusRagRetrievalService implements RagRetrievalService {
                     .annsField(EMBEDDING_FIELD)
                     .data(List.of(new FloatVec(queryEmbedding)))
                     .topK(topK)
-                    .outputFields(List.of(CHUNK_ID_FIELD, CONTENT_FIELD))
+                    .outputFields(List.of(CHUNK_ID_FIELD, DOC_ID_FIELD, CONTENT_FIELD))
                     .searchParams(Map.of("metric_type", ragVectorProperties.getMilvus().getMetricType()))
                     .consistencyLevel(ConsistencyLevel.STRONG)
                     .build());
@@ -62,6 +63,7 @@ public class MilvusRagRetrievalService implements RagRetrievalService {
                 Map<String, Object> entity = result.getEntity();
                 chunks.add(RetrievedChunk.builder()
                         .id(Objects.toString(entity.get(CHUNK_ID_FIELD), ""))
+                        .docId(Objects.toString(entity.get(DOC_ID_FIELD), ""))
                         .text(Objects.toString(entity.get(CONTENT_FIELD), ""))
                         .score(result.getScore())
                         .build());
