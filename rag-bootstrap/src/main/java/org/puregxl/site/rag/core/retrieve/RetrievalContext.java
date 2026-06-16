@@ -31,6 +31,12 @@ public class RetrievalContext {
     private Map<String, List<RetrievedChunk>> intentChunks;
 
     /**
+     * 参与最终上下文拼装的知识库 Chunk。
+     * 顺序与最终喂给模型的顺序保持一致，供评测旁路直接读取。
+     */
+    private List<RetrievedChunk> retrievedChunks;
+
+    /**
      * 是否存在 MCP 上下文
      */
     public boolean hasMcp() {

@@ -20,9 +20,9 @@ public class SearchChannelProperties {
     @Data
     public static class Channels{
 
-        private VectorChannel vectorChannel;
+        private VectorChannel vectorChannel = new VectorChannel();
 
-        private IntentChannel intentChannel;
+        private IntentChannel intentChannel = new IntentChannel();
     }
 
 

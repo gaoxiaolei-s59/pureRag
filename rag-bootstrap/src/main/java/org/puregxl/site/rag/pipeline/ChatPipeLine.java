@@ -83,6 +83,64 @@ public class ChatPipeLine {
         return llmService.streamChat(request, context.getCallback());
     }
 
+    /**
+     * 评测专用旁路：
+     * 复用正式问答链路里“生成前”的全部步骤，只返回结构化快照，不触发大模型生成。
+     */
+    public PipelineEvalResult evaluatePipeline(String userQuestion,
+                                               String conversationId,
+                                               Boolean deepThinking,
+                                               String userId) {
+        if (StrUtil.isBlank(userQuestion)) {
+            throw new ClientException("用户问题不能为空");
+        }
+
+        StreamChatContext context = StreamChatContext.builder()
+                .question(userQuestion.trim())
+                .conversationId(conversationId)
+                .deepThinking(Boolean.TRUE.equals(deepThinking))
+                .userId(userId)
+                .callback(null)
+                .build();
+
+        long totalStart = System.nanoTime();
+
+        List<ChatMessage> history = loadMemory(context);
+
+        long rewriteStart = System.nanoTime();
+        Rewrite(context.getQuestion(), latestRewriteHistory(history), context);
+        long rewriteLatencyMs = elapsedMillis(rewriteStart);
+
+        long intentStart = System.nanoTime();
+        resolveIntents(context);
+        long intentLatencyMs = elapsedMillis(intentStart);
+
+        boolean allSystemOnly = isAllSystemOnly(context.getSubIntents());
+
+        RetrievalContext retrievalContext = null;
+        long retrievalLatencyMs = 0L;
+        if (!allSystemOnly) {
+            long retrievalStart = System.nanoTime();
+            retrievalContext = retrieval(context);
+            retrievalLatencyMs = elapsedMillis(retrievalStart);
+        }
+
+        return PipelineEvalResult.builder()
+                .userQuestion(context.getQuestion())
+                .conversationId(context.getConversationId())
+                .deepThinking(context.isDeepThinking())
+                .history(history)
+                .rewriteResult(context.getRewriteResult())
+                .subIntents(context.getSubIntents())
+                .allSystemOnly(allSystemOnly)
+                .retrievalContext(retrievalContext)
+                .rewriteLatencyMs(rewriteLatencyMs)
+                .intentLatencyMs(intentLatencyMs)
+                .retrievalLatencyMs(retrievalLatencyMs)
+                .totalLatencyMs(elapsedMillis(totalStart))
+                .build();
+    }
+
     private List<ChatMessage> loadMemory(StreamChatContext context) {
         List<ChatMessage> chatMessages = memoryService.loadMemory(
                 context.getUserId(),
@@ -157,12 +215,7 @@ public class ChatPipeLine {
      */
     private StreamCancellationHandle handleSystemOnly(StreamChatContext context, List<ChatMessage> memoryMessages) {
         List<SubQuestionIntent> subIntents = context.getSubIntents();
-        if (CollUtil.isEmpty(subIntents)) {
-            return null;
-        }
-
-        boolean allSystemOnly = subIntents.stream()
-                .allMatch(subIntent -> subIntent != null && intentResolver.isSystemOnly(subIntent.getNodeScores()));
+        boolean allSystemOnly = isAllSystemOnly(subIntents);
         if (!allSystemOnly) {
             return null;
         }
@@ -172,6 +225,16 @@ public class ChatPipeLine {
         log.info("[RAG问答] 命中纯 SYSTEM 意图，跳过检索直连模型，taskId={}, conversationId={}, subQuestionCount={}",
                 context.getTaskId(), context.getConversationId(), subIntents.size());
         return llmService.streamChat(request, context.getCallback());
+    }
+
+    private boolean isAllSystemOnly(List<SubQuestionIntent> subIntents) {
+        if (CollUtil.isEmpty(subIntents)) {
+            return false;
+        }
+        return subIntents.stream().allMatch(subIntent ->
+                subIntent != null
+                        && CollUtil.isNotEmpty(subIntent.getNodeScores())
+                        && intentResolver.isSystemOnly(subIntent.getNodeScores()));
     }
 
 
@@ -232,5 +295,9 @@ public class ChatPipeLine {
             contexts.add(retrievalContext.getMcpContext().trim());
         }
         return contexts.isEmpty() ? "未检索到可用知识库片段。" : String.join("\n\n", contexts);
+    }
+
+    private long elapsedMillis(long startNanoTime) {
+        return Math.max(0L, (System.nanoTime() - startNanoTime) / 1_000_000L);
     }
 }

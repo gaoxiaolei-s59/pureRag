@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.Test;
 import org.puregxl.site.RagTestApplication;
+import org.puregxl.site.framework.exception.ClientException;
 import org.puregxl.site.infra.embedding.EmbeddingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,68 +10,8 @@ import java.util.*;
 @SpringBootTest(classes = RagTestApplication.class)
 public class FileTest {
 
-    @Autowired
-    private EmbeddingService embeddingService;
-
-    @Test
-    void test() {
-        List<Float> chineseVector = embeddingService.embed("你好");
-        List<Float> englishVector = embeddingService.embed("hello");
-        double similarity = cosineSimilarity(chineseVector, englishVector);
-
-        System.out.println("你好 vs hello cosine similarity = " + similarity);
-    }
-
-    private double cosineSimilarity(List<Float> left, List<Float> right) {
-        if (left == null || right == null || left.size() != right.size() || left.isEmpty()) {
-            throw new IllegalArgumentException("向量不能为空，且两个向量维度必须一致");
-        }
-        double dot = 0D;
-        double leftNorm = 0D;
-        double rightNorm = 0D;
-        for (int i = 0; i < left.size(); i++) {
-            double leftValue = left.get(i);
-            double rightValue = right.get(i);
-            dot += leftValue * rightValue;
-            leftNorm += leftValue * leftValue;
-            rightNorm += rightValue * rightValue;
-        }
-        if (leftNorm == 0D || rightNorm == 0D) {
-            throw new IllegalArgumentException("向量模长不能为 0");
-        }
-        return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
-    }
 
 
-    public class TreeNode {
-        int val;
-        TreeNode left;
-        TreeNode right;
-
-        TreeNode() {
-        }
-
-        TreeNode(int val) {
-            this.val = val;
-        }
-
-        TreeNode(int val, TreeNode left, TreeNode right) {
-            this.val = val;
-            this.left = left;
-            this.right = right;
-        }
-    }
-
-
-    public static void main(String[] args) {
-        List<Integer> list = new ArrayList<>();
-        add(list);
-        System.out.println(list);
-    }
-
-    public static void add(List<Integer> list) {
-        list.add(1);
-    }
 
 
 }

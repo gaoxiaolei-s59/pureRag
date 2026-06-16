@@ -41,6 +41,12 @@ public class RetrievedChunk {
     private String id;
 
     /**
+     * 命中 Chunk 所属的文档 ID。
+     * 评测链路需要用它做 doc 级召回统计，因此在检索读路径里一并透出。
+     */
+    private String docId;
+
+    /**
      * 命中的文本内容
      * 一般是被切分后的文档片段或段落
      */
