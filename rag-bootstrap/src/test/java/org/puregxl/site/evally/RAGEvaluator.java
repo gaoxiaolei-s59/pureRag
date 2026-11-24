@@ -30,7 +30,7 @@ public class RAGEvaluator {
 
     private static final String CHAT_API_URL = property("eval.chat.url", "https://api.siliconflow.cn/v1/chat/completions");
     private static final String EMBEDDING_API_URL = property("eval.embedding.url", "https://api.siliconflow.cn/v1/embeddings");
-    private static final String API_KEY = property("eval.apiKey", "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf");
+    private static final String API_KEY = property("eval.apiKey", System.getenv("SILICONFLOW_API_KEY"));
     private static final String JUDGE_MODEL = property("eval.judge.model", "deepseek-ai/DeepSeek-V3");
     private static final String ANSWER_MODEL = property("eval.answer.model", "Qwen/Qwen2.5-7B-Instruct");
     private static final String EMBEDDING_MODEL = property("eval.embedding.model", "Qwen/Qwen3-Embedding-8B");

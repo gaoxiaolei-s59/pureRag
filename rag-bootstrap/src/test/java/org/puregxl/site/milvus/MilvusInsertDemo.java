@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MilvusInsertDemo {
-    private static final String API_KEY = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+    private static final String API_KEY = System.getenv("SILICONFLOW_API_KEY");
     private static EmbeddingClient embeddingClient = new EmbeddingClient(API_KEY);
     private static final Gson GSON = new Gson();
     public static void main(String[] args) throws IOException, InterruptedException {
