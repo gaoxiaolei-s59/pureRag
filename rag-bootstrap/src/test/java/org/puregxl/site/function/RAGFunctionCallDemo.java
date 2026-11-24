@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 
 public class RAGFunctionCallDemo {
 
-    private static final String API_KEY = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+    private static final String API_KEY = System.getenv("SILICONFLOW_API_KEY");
     private static final String API_URL = "https://api.siliconflow.cn/v1/chat/completions";
     private static final String MODEL = "deepseek-ai/DeepSeek-V3";
 

@@ -23,7 +23,7 @@ import java.util.Objects;
 
 public class MilvusCollectionDemo {
 
-    private static final String SILICONFLOW_API_KEY = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+    private static final String SILICONFLOW_API_KEY = System.getenv("SILICONFLOW_API_KEY");
     private static final String EMBEDDING_URL = "https://api.siliconflow.cn/v1/embeddings";
     private static final String EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B";
     private static final Gson GSON = new Gson();

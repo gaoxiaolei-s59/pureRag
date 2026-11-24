@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.Map;
 
 public class EmbeddingDemo {
-    private static final String API_KEY = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguth";
+    private static final String API_KEY = System.getenv("SILICONFLOW_API_KEY");
 
     public static void main(String[] args) throws IOException, InterruptedException {
         // 1. 初始化 EmbeddingClient（替换成你自己的 API Key）
-        String apiKey = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+        String apiKey = System.getenv("SILICONFLOW_API_KEY");
         EmbeddingClient client = new EmbeddingClient(apiKey);
 
         List<Map<String, Object>> chunks = new ArrayList<>();

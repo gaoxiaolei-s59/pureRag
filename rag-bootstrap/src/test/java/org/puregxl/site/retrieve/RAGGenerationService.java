@@ -22,7 +22,7 @@ public class RAGGenerationService {
 
     // SiliconFlow API 配置
     private static final String API_URL = "https://api.siliconflow.cn/v1/chat/completions";
-    private static final String API_KEY = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+    private static final String API_KEY = System.getenv("SILICONFLOW_API_KEY");
     private static final String MODEL = "Qwen/Qwen2.5-7B-Instruct";
 
     private static final OkHttpClient client = new OkHttpClient.Builder()

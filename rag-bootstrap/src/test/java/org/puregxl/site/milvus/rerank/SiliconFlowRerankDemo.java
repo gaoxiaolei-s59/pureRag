@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class SiliconFlowRerankDemo {
-    private static final String API_KEY = "sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf";
+    private static final String API_KEY = System.getenv("SILICONFLOW_API_KEY");
     private static final String RERANK_URL = "https://api.siliconflow.cn/v1/rerank";
     private static final String MODEL = "BAAI/bge-reranker-v2-m3";
     private static final Gson GSON = new Gson();

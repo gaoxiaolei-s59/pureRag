@@ -56,8 +56,8 @@ rag:
 
 rustfs:
   url: http://localhost:9000
-  access-key-id: rustfsadmin
-  secret-access-key: rustfsadmin
+  access-key-id: ${RUSTFS_ACCESS_KEY_ID:}
+  secret-access-key: ${RUSTFS_SECRET_ACCESS_KEY:}
   create-bucket-if-missing: true
 
 rocketmq:
@@ -90,13 +90,13 @@ ai:
   providers:
     bailian:
       url: https://dashscope.aliyuncs.com
-      api-key: sk-fa84b1f526424030b79985d311710146
+      api-key: ${BAILIAN_API_KEY:}
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
     siliconflow:
       url: https://api.siliconflow.cn
-      api-key: sk-rjtfqcpnhpzonswkebygmaqnqvibqcndgqxqfxghizuguthf
+      api-key: ${SILICONFLOW_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings

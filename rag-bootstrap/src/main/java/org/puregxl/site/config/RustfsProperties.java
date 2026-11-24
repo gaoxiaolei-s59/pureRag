@@ -25,13 +25,13 @@ public class RustfsProperties {
      * Access Key。
      */
     @NotBlank
-    private String accessKeyId = "rustfsadmin";
+    private String accessKeyId = "";
 
     /**
      * Secret Key。
      */
     @NotBlank
-    private String secretAccessKey = "rustfsadmin";
+    private String secretAccessKey = "";
 
     /**
      * 启动时桶不存在是否自动创建。
