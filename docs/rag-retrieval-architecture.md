@@ -25,8 +25,7 @@ flowchart TD
     D --> E["ChatPipeLine.execute"]
 
     E --> F["loadMemory(context)"]
-    F --> F1["MemoryServiceImpl<br/>压缩历史(按需)"]
-    F1 --> F2["加载摘要消息 + 历史消息"]
+    F --> F2["并行读取已保存的摘要与最近对话"]
     F2 --> G["Rewrite(context, memory)"]
 
     G --> G1["MutiQueryRewriteService<br/>结合最近4轮对话改写问题"]
@@ -40,7 +39,7 @@ flowchart TD
     I -->|是| J["handleSystemOnly"]
     J --> J1["跳过 embedding"]
     J1 --> J2["跳过知识库检索"]
-    J2 --> J3["直接组装历史消息 + 当前问题"]
+    J2 --> J3["组装用户长期记忆、历史消息和当前问题"]
     J3 --> N["llmService.streamChat"]
 
     I -->|否| K["进入 RAG 检索链路"]
@@ -53,7 +52,7 @@ flowchart TD
     K5 --> L["buildChatRequest"]
     L --> L1["加载 rag-system-prompt.txt"]
     L1 --> L2["把 chunks 拼进 {{context}}"]
-    L2 --> L3["拼接摘要消息 + 历史消息 + 当前用户问题"]
+    L2 --> L3["拼接摘要、用户长期记忆、最近消息和当前问题"]
     L3 --> N["llmService.streamChat"]
 
     N --> O["流式回调"]
@@ -61,7 +60,8 @@ flowchart TD
     O --> O2["onContent -> SSE 推送正文"]
     O --> O3["onComplete -> 保存用户消息和助手回复到记忆"]
 
-    O3 --> P["MemoryServiceImpl.saveConversation"]
+    O3 --> P["提交本轮问答和长期记忆待办"]
+    P --> Q["后台刷新会话摘要与用户长期记忆"]
 ```
 
 ## 3. 关键组件职责
@@ -91,12 +91,9 @@ flowchart TD
 
 ### 3.3 记忆与上下文层
 
-- `MemoryServiceImpl`
-  - 按需压缩历史消息
-  - 加载摘要消息与历史对话
-  - 在问答结束后落库保存本轮消息
+会话历史按用户和会话隔离。读取时并行加载最近消息与已保存的滚动摘要；回答落库后，后台按覆盖范围刷新摘要。问题改写使用最近的对话原文。
 
-当前记忆加载策略不是简单加载完整历史，而是采用“摘要 + 最近历史”的方式控制上下文长度。
+开启跨会话记忆后，每次保存问答都会在同一事务中登记用户消息 ID。后台按用户顺序读取原话，调用模型判定变更，再用版本号校验并提交。直连与检索回答都使用当前登录用户已提交的事实。完整聊天记录和评测响应仍只展示会话内容。
 
 ### 3.4 改写与意图识别层
 

@@ -145,8 +145,7 @@ flowchart TD
     D --> E["ChatPipeLine.execute"]
 
     E --> F["loadMemory(context)"]
-    F --> F1["MemoryServiceImpl<br/>Compress history when needed"]
-    F1 --> F2["Load summary messages + recent history"]
+    F --> F2["Load saved summary and recent messages in parallel"]
     F2 --> G["Rewrite(context, memory)"]
 
     G --> G1["MutiQueryRewriteService<br/>Rewrite the question using the latest 4 turns"]
@@ -160,7 +159,7 @@ flowchart TD
     I -->|Yes| J["handleSystemOnly"]
     J --> J1["Skip embedding"]
     J1 --> J2["Skip knowledge retrieval"]
-    J2 --> J3["Assemble history + current question directly"]
+    J2 --> J3["Assemble user memory, history and current question"]
     J3 --> N["llmService.streamChat"]
 
     I -->|No| K["Enter the RAG retrieval path"]
@@ -173,7 +172,7 @@ flowchart TD
     K5 --> L["buildChatRequest"]
     L --> L1["Load rag-system-prompt.txt"]
     L1 --> L2["Inject chunks into {{context}}"]
-    L2 --> L3["Assemble summary + history + current user question"]
+    L2 --> L3["Assemble summary, user memory, recent history and current question"]
     L3 --> N["llmService.streamChat"]
 
     N --> O["Streaming callbacks"]
@@ -181,7 +180,8 @@ flowchart TD
     O --> O2["onContent -> Push answer tokens through SSE"]
     O --> O3["onComplete -> Save user and assistant messages into memory"]
 
-    O3 --> P["MemoryServiceImpl.saveConversation"]
+    O3 --> P["Commit turn and pending user-memory job"]
+    P --> Q["Refresh summary and user facts in the background"]
 ```
 
 For an in-depth walkthrough, see: [RAG Retrieval Architecture](./docs/rag-retrieval-architecture.md)
@@ -189,6 +189,12 @@ For an in-depth walkthrough, see: [RAG Retrieval Architecture](./docs/rag-retrie
 ## Configuration
 
 All configuration is centralized in `rag-bootstrap/src/main/resources/application.yaml`. Key sections:
+
+### Conversation and cross-conversation memory
+
+Omitting `conversationId` starts a stateless request. For a named conversation, the chat pipeline loads the last eight turns by default. Set `rag.memory.summary-enabled=true` to generate rolling summaries in the background after a turn commits. The default trigger is one turn beyond `history-keep-turns`. Set `summary-start-turns` to override it. The history endpoint continues to return the full conversation.
+
+For cross-conversation memory, apply the [MySQL 8 migration](rag-bootstrap/src/main/resources/db/manual/20261125_user_memory.sql), set `rag.memory.long-term-enabled=true`, and restart the application. New saved turns can then add, correct or forget user facts. Both direct chat and retrieval-based answers use the signed-in user's saved facts as background. Updates take effect after background processing. Each account can retain up to 32 facts. Turning the feature off pauses learning and recall while retaining saved data.
 
 ### Data & Middleware
 

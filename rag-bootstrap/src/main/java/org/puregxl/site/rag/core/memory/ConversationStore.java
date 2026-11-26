@@ -7,6 +7,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.puregxl.site.config.MemoryProperties;
 import org.puregxl.site.infra.chat.LLMService;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.infra.framework.convention.ChatRequest;
@@ -26,7 +27,6 @@ import java.util.List;
 @Slf4j
 public class ConversationStore implements ConversationStoreService {
 
-    private static final int TITLE_MAX_LENGTH = 30;
     private static final int DESCRIPTION_MAX_LENGTH = 120;
     private static final String TITLE_PROMPT_RESOURCE_PATH = "prompt/conversation-title-prompt.txt";
 
@@ -35,6 +35,8 @@ public class ConversationStore implements ConversationStoreService {
     private final LLMService llmService;
 
     private final PromptTemplateLoader promptTemplateLoader;
+
+    private final MemoryProperties memoryProperties;
 
     /**
      * 首次对话时保存会话元信息。
@@ -84,38 +86,43 @@ public class ConversationStore implements ConversationStoreService {
             return parseConversationTitle(rawResult, content);
         } catch (Exception ex) {
             log.warn("[会话] 生成会话标题失败，使用首问兜底", ex);
-            return fallbackConversationTitle(content);
+            return fallbackConversationTitle(content, memoryProperties.getTitleMaxLength());
         }
     }
 
     private String buildTitlePrompt(String content) {
         return promptTemplateLoader.load(TITLE_PROMPT_RESOURCE_PATH)
+                .replace("{{titleMaxLength}}", String.valueOf(memoryProperties.getTitleMaxLength()))
                 .replace("{{question}}", content);
     }
 
     private ConversationTitle parseConversationTitle(String rawResult, String content) {
         String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(rawResult);
         if (StrUtil.isBlank(cleaned) || !JSONUtil.isTypeJSON(cleaned)) {
-            return fallbackConversationTitle(content);
+            return fallbackConversationTitle(content, memoryProperties.getTitleMaxLength());
         }
         JSONObject jsonObject = JSONUtil.parseObj(cleaned);
-        String title = StrUtil.sub(StrUtil.blankToDefault(jsonObject.getStr("title"), fallbackTitle(content)), 0, TITLE_MAX_LENGTH);
-        String description = StrUtil.sub(StrUtil.blankToDefault(jsonObject.getStr("description"), fallbackDescription(content)), 0, DESCRIPTION_MAX_LENGTH);
-        return new ConversationTitle(title, description);
+        int maxTitle = memoryProperties.getTitleMaxLength();
+        ConversationTitle fallback = fallbackConversationTitle(content, maxTitle);
+        String title = StrUtil.blankToDefault(jsonObject.getStr("title"), fallback.title());
+        String description = StrUtil.blankToDefault(jsonObject.getStr("description"), fallback.description());
+        return new ConversationTitle(limitText(title, maxTitle), limitText(description, DESCRIPTION_MAX_LENGTH));
     }
 
-    private ConversationTitle fallbackConversationTitle(String content) {
-        return new ConversationTitle(fallbackTitle(content), fallbackDescription(content));
+    /** 首次加载或写入时遇到缺失的元信息，均按相同的首问截断规则兜底。 */
+    static ConversationTitle fallbackConversationTitle(String content, int maxTitle) {
+        return new ConversationTitle(limitText(StrUtil.cleanBlank(content), maxTitle),
+                limitText(content.trim(), DESCRIPTION_MAX_LENGTH));
     }
 
-    private String fallbackTitle(String content) {
-        return StrUtil.sub(StrUtil.cleanBlank(content), 0, TITLE_MAX_LENGTH);
+    /** 按 Unicode 码点截断，避免标题或描述末尾留下半个代理字符。 */
+    private static String limitText(String text, int length) {
+        if (text.codePointCount(0, text.length()) <= length) {
+            return text;
+        }
+        return text.substring(0, text.offsetByCodePoints(0, length));
     }
 
-    private String fallbackDescription(String content) {
-        return StrUtil.sub(content.trim(), 0, DESCRIPTION_MAX_LENGTH);
-    }
-
-    private record ConversationTitle(String title, String description) {
+    record ConversationTitle(String title, String description) {
     }
 }

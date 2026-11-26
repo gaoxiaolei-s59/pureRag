@@ -66,7 +66,8 @@ public class ChatPipeLine {
         resolveIntents(context);
 
         // 4.检查是否全部命中SYSTEM
-        StreamCancellationHandle systemOnlyHandle = handleSystemOnly(context, memoryMessages);
+        List<ChatMessage> answerMemory = withUserMemory(context, memoryMessages);
+        StreamCancellationHandle systemOnlyHandle = handleSystemOnly(context, answerMemory);
         if (systemOnlyHandle != null) {
             return systemOnlyHandle;
         }
@@ -74,7 +75,7 @@ public class ChatPipeLine {
         // 5.非 SYSTEM 问题统一进入多通道检索链路，避免继续走旧的默认 Collection 单路检索。
         String question = context.getQuestion().trim();
         RetrievalContext retrievalContext = retrieval(context);
-        ChatRequest request = buildChatRequest(question, retrievalContext, memoryMessages, context.isDeepThinking());
+        ChatRequest request = buildChatRequest(question, retrievalContext, answerMemory, context.isDeepThinking());
 
         log.info("[RAG问答] 开始流式生成，taskId={}, conversationId={}, hasKb={}, hasMcp={}",
                 context.getTaskId(), context.getConversationId(),
@@ -139,6 +140,24 @@ public class ChatPipeLine {
                 .retrievalLatencyMs(retrievalLatencyMs)
                 .totalLatencyMs(elapsedMillis(totalStart))
                 .build();
+    }
+
+    /** 仅在生成回答时插入长期记忆，保留系统摘要在前、最近对话与本轮问题相邻的顺序。 */
+    private List<ChatMessage> withUserMemory(StreamChatContext context, List<ChatMessage> history) {
+        if (StrUtil.hasBlank(context.getConversationId(), context.getUserId())) {
+            return history;
+        }
+        ChatMessage profile = memoryService.loadUserMemory(context.getUserId());
+        if (profile == null) {
+            return history;
+        }
+        List<ChatMessage> messages = new ArrayList<>(history);
+        int index = 0;
+        while (index < messages.size() && messages.get(index).getRole() == ChatMessage.Role.SYSTEM) {
+            index++;
+        }
+        messages.add(index, profile);
+        return messages;
     }
 
     private List<ChatMessage> loadMemory(StreamChatContext context) {

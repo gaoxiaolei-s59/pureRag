@@ -6,6 +6,7 @@ import org.puregxl.site.infra.framework.convention.ChatMessage;
 import org.puregxl.site.rag.core.memory.ConversationMemoryService;
 import org.puregxl.site.rag.core.memory.ConversationStore;
 import org.puregxl.site.rag.core.memory.ConversationSummerService;
+import org.puregxl.site.rag.core.usermemory.UserMemoryService;
 import org.puregxl.site.rag.dao.entity.MemoryDO;
 import org.puregxl.site.rag.dao.mapper.MemoryMapper;
 import org.puregxl.site.rag.dto.resp.MemoryQueryResponse;
@@ -18,6 +19,7 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,6 +28,23 @@ class MemoryServiceImplTest {
     @AfterEach
     void tearDown() {
         UserContext.removeUserContext();
+    }
+
+    @Test
+    void loadingHistoryDoesNotStartSummaryGeneration() {
+        ConversationMemoryService store = mock(ConversationMemoryService.class);
+        ConversationSummerService summaries = mock(ConversationSummerService.class);
+        MemoryServiceImpl service = new MemoryServiceImpl(store, summaries, Runnable::run,
+                mock(ConversationStore.class), mock(MemoryMapper.class), mock(UserMemoryService.class));
+        ChatMessage summary = ChatMessage.system("之前的摘要");
+        ChatMessage recent = ChatMessage.user("上个问题");
+        when(summaries.loadSummary("conv", "user")).thenReturn(summary);
+        when(store.loadHistory("conv", "user")).thenReturn(List.of(recent));
+
+        assertThat(service.loadMemory("user", "conv", ChatMessage.user("当前问题")))
+                .containsExactly(summary, recent);
+        verify(store).loadHistory("conv", "user");
+        verifyNoMoreInteractions(store);
     }
 
     @Test
@@ -40,7 +59,8 @@ class MemoryServiceImplTest {
                 conversationSummerService,
                 executor,
                 conversationStore,
-                memoryMapper
+                memoryMapper,
+                mock(UserMemoryService.class)
         );
         UserContext.setUserContext(UserInfoDTO.builder().userId("user-1").build());
         when(memoryMapper.selectList(any())).thenReturn(List.of(

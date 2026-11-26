@@ -58,6 +58,15 @@ public class ThreadPoolExecutorConfig {
     }
 
 
+    /** 摘要会等待外部模型，把它与前台加载历史的线程池分开。 */
+    @Bean
+    public Executor memorySummaryExecutor() {
+        return new ThreadPoolExecutor(2, 4, 60, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(100),
+                ThreadFactoryBuilder.create().setNamePrefix("memory_summary_").build(),
+                new ThreadPoolExecutor.AbortPolicy());
+    }
+
     /**
      * 意图识别并行执行线程池
      */

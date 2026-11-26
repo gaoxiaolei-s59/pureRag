@@ -16,6 +16,9 @@ public interface MemoryService {
      */
     List<ChatMessage> loadMemory(String userId, String conversationId, ChatMessage user);
 
+    /** 加载当前登录用户在多个会话间共享的参考资料，未启用或没有条目时返回空。 */
+    ChatMessage loadUserMemory(String userId);
+
     /**
      * 保存一次完整问答结果。
      * <p>

@@ -115,6 +115,7 @@ class ChatPipeLineTest {
         assertThat(actual.getIntentLatencyMs()).isGreaterThanOrEqualTo(0L);
         assertThat(actual.getRetrievalLatencyMs()).isGreaterThanOrEqualTo(0L);
         assertThat(actual.getTotalLatencyMs()).isGreaterThanOrEqualTo(actual.getRewriteLatencyMs());
+        verify(memoryService, never()).loadUserMemory(any());
         verify(retrievalEngine).retrieval(subIntents, 6, "user-1");
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
     }
@@ -192,10 +193,12 @@ class ChatPipeLineTest {
                 .rewrittenQuestion(question)
                 .subQuestions(List.of(question))
                 .build();
-        List<ChatMessage> history = List.of(
+        List<ChatMessage> recent = List.of(
                 ChatMessage.user("你是谁？"),
                 ChatMessage.assistant("我是助手。")
         );
+        ChatMessage summary = ChatMessage.system("此前讨论过自我介绍");
+        List<ChatMessage> history = List.of(summary, recent.get(0), recent.get(1));
         List<SubQuestionIntent> subIntents = List.of(
                 new SubQuestionIntent(question, List.of(
                         NodeScore.builder()
@@ -205,8 +208,10 @@ class ChatPipeLineTest {
                 ))
         );
 
+        ChatMessage profile = ChatMessage.user("长期记忆：偏好用中文交流");
+        when(memoryService.loadUserMemory("user-1")).thenReturn(profile);
         when(memoryService.loadMemory(any(), any(), any(ChatMessage.class))).thenReturn(history);
-        when(queryRewriteService.rewrite(question, history)).thenReturn(rewriteResult);
+        when(queryRewriteService.rewrite(question, recent)).thenReturn(rewriteResult);
         when(intentResolver.resolve(rewriteResult)).thenReturn(subIntents);
         when(intentResolver.isSystemOnly(subIntents.get(0).getNodeScores())).thenReturn(true);
         when(llmService.streamChat(any(ChatRequest.class), eq(callback))).thenReturn(handle);
@@ -225,11 +230,28 @@ class ChatPipeLineTest {
         ChatRequest request = requestCaptor.getValue();
         assertThat(request.getThinking()).isTrue();
         assertThat(request.getMessages()).containsExactly(
+                summary,
+                profile,
                 ChatMessage.user("你是谁？"),
                 ChatMessage.assistant("我是助手。"),
                 ChatMessage.user(question)
         );
         verify(retrievalEngine, never()).retrieval(any(), any(Integer.class), any());
+    }
+
+    @Test
+    void chatWithoutConversationIdRemainsStatelessForSignedInUsers() {
+        var model = mock(LLMService.class);
+        var memory = mock(MemoryService.class);
+        var rewrite = mock(QueryRewriteService.class);
+        var intent = mock(IntentResolver.class);
+        var pipeline = new ChatPipeLine(model, memory, rewrite, new PromptTemplateLoader(),
+                intent, mock(RetrievalEngine.class), new SearchChannelProperties());
+
+        pipeline.execute(StreamChatContext.builder().question("临时问题").userId("user-1")
+                .callback(mock(StreamCallback.class)).build());
+
+        verify(memory, never()).loadUserMemory(any());
     }
 
     @Test
@@ -281,6 +303,8 @@ class ChatPipeLineTest {
                 .mcpContext("MCP工具结果：当前没有额外工具结果")
                 .build();
 
+        ChatMessage profile = ChatMessage.user("长期记忆：偏好用中文交流");
+        when(memoryService.loadUserMemory("user-1")).thenReturn(profile);
         when(memoryService.loadMemory(any(), any(), any(ChatMessage.class))).thenReturn(history);
         when(queryRewriteService.rewrite(question, history)).thenReturn(rewriteResult);
         when(intentResolver.resolve(rewriteResult)).thenReturn(subIntents);
@@ -298,6 +322,8 @@ class ChatPipeLineTest {
         assertThat(actual).isSameAs(handle);
         ArgumentCaptor<ChatRequest> requestCaptor = ArgumentCaptor.forClass(ChatRequest.class);
         verify(llmService).streamChat(requestCaptor.capture(), eq(callback));
+        assertThat(requestCaptor.getValue().getMessages().subList(1, 4))
+                .containsExactly(profile, history.get(0), ChatMessage.user(question));
         String systemPrompt = requestCaptor.getValue().getMessages().get(0).getContent();
         assertThat(systemPrompt).contains("子问题：报销流程在哪申请");
         assertThat(systemPrompt).contains("知识库检索结果：");

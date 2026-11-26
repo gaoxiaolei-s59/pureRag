@@ -11,7 +11,7 @@ public interface ConversationMemoryService {
      * @param userId
      * @return
      */
-    List<ChatMessage>  loadHistory(String conversationId, String userId);
+    List<ChatMessage> loadHistory(String conversationId, String userId);
 
     /**
      * 持久化一次完整对话。
@@ -26,10 +26,10 @@ public interface ConversationMemoryService {
     void saveConversationTurn(String conversationId, String userId, ChatMessage userMessage, ChatMessage assistantMessage);
 
     /**
-     * 检查当前会话是否达到压缩阈值，并执行摘要压缩。
+     * 提交后台摘要任务。
      * <p>
-     * 达到阈值后，先将超过最近保留轮数的历史消息合并进会话摘要，
-     * 摘要写入成功后再把这些原始消息标记为已压缩，后续加载上下文时只加载摘要和最近未压缩消息。
+     * 达到阈值后，滚动摘要覆盖最近原文窗口的前半段。摘要和覆盖标记一并提交；
+     * 原文窗口仍完整加载，等窗口滑出覆盖范围后才会再次生成摘要。
      *
      * @param conversationId 会话 ID
      * @param userId 用户 ID

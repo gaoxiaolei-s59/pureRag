@@ -145,8 +145,7 @@ flowchart TD
     D --> E["ChatPipeLine.execute"]
 
     E --> F["loadMemory(context)"]
-    F --> F1["MemoryServiceImpl<br/>压缩历史(按需)"]
-    F1 --> F2["加载摘要消息 + 最近历史消息"]
+    F --> F2["并行读取已保存的摘要与最近对话"]
     F2 --> G["Rewrite(context, memory)"]
 
     G --> G1["MutiQueryRewriteService<br/>结合最近 4 轮对话改写问题"]
@@ -160,7 +159,7 @@ flowchart TD
     I -->|是| J["handleSystemOnly"]
     J --> J1["跳过 embedding"]
     J1 --> J2["跳过知识库检索"]
-    J2 --> J3["直接组装历史消息 + 当前问题"]
+    J2 --> J3["组装用户长期记忆、历史消息和当前问题"]
     J3 --> N["llmService.streamChat"]
 
     I -->|否| K["进入 RAG 检索链路"]
@@ -173,7 +172,7 @@ flowchart TD
     K5 --> L["buildChatRequest"]
     L --> L1["加载 rag-system-prompt.txt"]
     L1 --> L2["把 chunks 拼进 {{context}}"]
-    L2 --> L3["拼接摘要消息 + 历史消息 + 当前用户问题"]
+    L2 --> L3["拼接摘要、用户长期记忆、最近消息和当前问题"]
     L3 --> N["llmService.streamChat"]
 
     N --> O["流式回调"]
@@ -181,7 +180,8 @@ flowchart TD
     O --> O2["onContent -> SSE 推送正文"]
     O --> O3["onComplete -> 保存用户消息和助手回复到记忆"]
 
-    O3 --> P["MemoryServiceImpl.saveConversation"]
+    O3 --> P["提交本轮问答和长期记忆待办"]
+    P --> Q["后台刷新会话摘要与用户长期记忆"]
 ```
 
 详细说明见：[RAG 检索全流程架构文档](./docs/rag-retrieval-architecture.md)
@@ -189,6 +189,23 @@ flowchart TD
 ## 配置概览
 
 项目配置集中在 `rag-bootstrap/src/main/resources/application.yaml`，关键配置项如下：
+
+### 会话记忆与跨会话记忆
+
+不传 `conversationId` 可发起无记忆的临时问答。传入同一个 `conversationId` 默认保留最近 8 轮原文。可通过 `rag.memory.summary-enabled=true` 开启滚动摘要；默认从第 9 轮开始，回答保存后在后台生成。调整 `history-keep-turns` 时，摘要起始轮数默认跟随为窗口大小加一，也可显式设置 `summary-start-turns`。历史记录接口仍可查询完整对话。
+
+要让同一用户在新会话中沿用偏好，请先在 RagTest 的 MySQL 8 库执行[长期记忆迁移脚本](rag-bootstrap/src/main/resources/db/manual/20261125_user_memory.sql)，再开启以下配置并重启应用。
+
+```yaml
+rag:
+  memory:
+    summary-enabled: true
+    long-term-enabled: true
+```
+
+登录用户在会话 A 中说“我通常希望用中文回答”，该轮保存后，后台从用户原话提取稳定偏好。同一账号随后在会话 B 中提问时，直连模型和知识库问答都能参考已写入的事实。用户可在聊天中更正、要求遗忘某一项，或要求清空全部长期记忆。变更在后台提交后生效，聊天记录仍按原有会话保留。
+
+长期记忆默认关闭。开启后从新保存的问答开始学习，每个用户最多保存 32 条事实。任务连续失败 5 次后，系统保留该任务供排查，继续处理该用户后续的消息。可查询 `t_user_memory_job` 中 `failure_count = 5` 的任务。关闭开关会暂停提取与注入，已保存的数据保留在库中。
 
 ### 数据与中间件
 

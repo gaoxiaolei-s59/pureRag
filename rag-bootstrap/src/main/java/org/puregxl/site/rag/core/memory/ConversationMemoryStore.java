@@ -1,155 +1,105 @@
 package org.puregxl.site.rag.core.memory;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.puregxl.site.config.MemoryProperties;
 import org.puregxl.site.infra.framework.convention.ChatMessage;
+import org.puregxl.site.rag.core.usermemory.UserMemoryQueue;
 import org.puregxl.site.rag.dao.entity.MemoryDO;
+import org.puregxl.site.rag.dao.mapper.ConversationMapper;
 import org.puregxl.site.rag.dao.mapper.MemoryMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 @Service
-@Slf4j
 @RequiredArgsConstructor
 public class ConversationMemoryStore implements ConversationMemoryService {
-
     private final MemoryMapper memoryMapper;
-
+    private final ConversationMapper conversationMapper;
     private final MemoryProperties memoryProperties;
-
     private final ConversationSummerService conversationSummerService;
-
-    private static final int COMPRESSED = 1;
+    private final UserMemoryQueue userMemoryQueue;
 
     /**
-     * 加载未压缩的最近历史记录。
-     * <p>
-     * 查询时只取 compressed_flag=0 的消息，并按配置保留最近 N 轮（user + assistant 视为一轮）。
-     * 数据库先按创建时间倒序截取最近消息，再在内存中反转成正序，保证传给模型的上下文顺序自然。
-     *
-     * @param conversationId
-     * @param userId
-     * @return
+     * 回放最近的原文窗口。摘要可以覆盖窗口的一部分；已经被摘要覆盖的消息仍能提供原文细节。
+     * 同一时间戳用主键稳定排序，并跳过旧数据中的空消息、无效角色和窗口开头的孤立回复。
      */
     @Override
     public List<ChatMessage> loadHistory(String conversationId, String userId) {
         if (StrUtil.hasBlank(conversationId, userId)) {
             return List.of();
         }
-        int keepMessages = safeTurnCount(memoryProperties.getHistoryKeepTurns()) * 2;
-        LambdaQueryWrapper<MemoryDO> memoryDOLambdaQueryWrapper = Wrappers.lambdaQuery(MemoryDO.class)
+        List<MemoryDO> rows = memoryMapper.selectList(Wrappers.lambdaQuery(MemoryDO.class)
                 .eq(MemoryDO::getConversationId, conversationId)
                 .eq(MemoryDO::getUserId, userId)
-                .eq(MemoryDO::getCompressedFlag, 0)
-                .orderByDesc(MemoryDO::getCreateTime)
-                .last("limit " + keepMessages);
+                .in(MemoryDO::getRole, "user", "assistant")
+                .orderByDesc(MemoryDO::getCreateTime, MemoryDO::getId)
+                .last("limit " + memoryProperties.getHistoryKeepTurns() * 2));
 
-        List<MemoryDO> memoryDOS = memoryMapper.selectList(memoryDOLambdaQueryWrapper);
-        if (CollUtil.isEmpty(memoryDOS)) {
-            return List.of();
+        List<ChatMessage> messages = new ArrayList<>(rows.size());
+        for (int i = rows.size() - 1; i >= 0; i--) {
+            MemoryDO row = rows.get(i);
+            if (StrUtil.isBlank(row.getContent())) {
+                continue;
+            }
+            if ("user".equalsIgnoreCase(row.getRole())) {
+                messages.add(ChatMessage.user(row.getContent()));
+            } else if (!messages.isEmpty() && "assistant".equalsIgnoreCase(row.getRole())) {
+                messages.add(ChatMessage.assistant(row.getContent()));
+            }
         }
-
-        List<MemoryDO> orderedMemoryDOS = new ArrayList<>(memoryDOS);
-        Collections.reverse(orderedMemoryDOS);
-        return orderedMemoryDOS.stream()
-                .map(this::toChatMessage)
-                .toList();
+        return messages;
     }
 
     /**
-     * 持久化一次完整对话。
-     * <p>
-     * 这里不与 SSE 响应事务绑定：流式输出已经完成后再落库，失败只影响后续上下文，不影响本次用户响应。
-     * 写入后立即检查压缩阈值，避免长会话持续携带过多原文历史。
+     * 将问答两条原文与长期记忆待办作为同一事务提交。回滚时后台看不到半轮记录；
+     * 会话摘要在提交之后进入独立线程池，模型调用不会占用数据库连接或阻塞 SSE 完成回调。
      */
     @Override
+    @Transactional
     public void saveConversationTurn(String conversationId, String userId, ChatMessage userMessage, ChatMessage assistantMessage) {
-        if (StrUtil.hasBlank(conversationId, userId) || userMessage == null || assistantMessage == null) {
+        if (StrUtil.hasBlank(conversationId, userId) || userMessage == null || assistantMessage == null
+                || StrUtil.hasBlank(userMessage.getContent(), assistantMessage.getContent())) {
             return;
         }
-        memoryMapper.insert(toMemoryDO(conversationId, userId, userMessage));
+        // 行锁持有至整轮提交，同一会话的两个请求不会交错插入四条消息。
+        var fallback = ConversationStore.fallbackConversationTitle(userMessage.getContent(), memoryProperties.getTitleMaxLength());
+        conversationMapper.touchForTurn(conversationId, userId, fallback.title(), fallback.description());
+        conversationMapper.lockOwnedConversation(conversationId, userId);
+        MemoryDO question = toMemoryDO(conversationId, userId, userMessage);
+        memoryMapper.insert(question);
         memoryMapper.insert(toMemoryDO(conversationId, userId, assistantMessage));
-        compressIfNeeded(conversationId, userId);
+        userMemoryQueue.enqueue(userId, question.getId());
+        if (Boolean.TRUE.equals(memoryProperties.getSummaryEnabled())) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    compressIfNeeded(conversationId, userId);
+                }
+            });
+        }
     }
 
-    /**
-     * 将超过最近保留范围的未压缩消息压缩为摘要，并标记为已压缩。
-     * <p>
-     * 压缩顺序必须是：先生成并保存摘要，再标记原始消息 compressed_flag=1。
-     * 这样即使摘要生成失败，原始历史仍然保持未压缩状态，后续对话不会丢失上下文。
-     */
     @Override
     public void compressIfNeeded(String conversationId, String userId) {
-        if (!Boolean.TRUE.equals(memoryProperties.getSummaryEnabled()) || StrUtil.hasBlank(conversationId, userId)) {
-            return;
-        }
-        int keepMessages = safeTurnCount(memoryProperties.getHistoryKeepTurns()) * 2;
-        LambdaQueryWrapper<MemoryDO> memoryDOLambdaQueryWrapper = Wrappers.lambdaQuery(MemoryDO.class)
-                .eq(MemoryDO::getConversationId, conversationId)
-                .eq(MemoryDO::getUserId, userId)
-                .eq(MemoryDO::getCompressedFlag, 0)
-                .orderByAsc(MemoryDO::getCreateTime);
-
-        List<MemoryDO> memoryDOS = memoryMapper.selectList(memoryDOLambdaQueryWrapper);
-        if ( CollUtil.size(memoryDOS) <= keepMessages) {
-            return;
-        }
-
-        List<MemoryDO> compressMemoryList = memoryDOS.stream()
-                .limit(memoryDOS.size() - keepMessages)
-                .toList();
-
-        String summary = conversationSummerService.summarizeAndSave(
-                conversationId,
-                userId,
-                compressMemoryList.stream().map(this::toChatMessage).toList());
-        if (StrUtil.isBlank(summary)) {
-            log.warn("[对话记忆] 历史消息摘要生成为空，跳过压缩标记, conversationId={}, userId={}", conversationId, userId);
-            return;
-        }
-        List<String> compressedIds = compressMemoryList.stream()
-                .map(MemoryDO::getId)
-                .toList();
-        if (CollUtil.isEmpty(compressedIds)) {
-            return;
-        }
-        LambdaUpdateWrapper<MemoryDO> updateWrapper = Wrappers.lambdaUpdate(MemoryDO.class)
-                .set(MemoryDO::getCompressedFlag, COMPRESSED)
-                .in(MemoryDO::getId, compressedIds);
-        memoryMapper.update(updateWrapper);
-        log.info("[对话记忆] 历史消息已标记压缩, conversationId={}, userId={}, count={}", conversationId, userId, compressedIds.size());
+        conversationSummerService.scheduleCompression(conversationId, userId);
     }
-
-
 
     private MemoryDO toMemoryDO(String conversationId, String userId, ChatMessage message) {
         return MemoryDO.builder()
                 .conversationId(conversationId)
                 .UserId(userId)
-                .role(message.getRole().name().toLowerCase())
+                .role(message.getRole().name().toLowerCase(Locale.ROOT))
                 .content(message.getContent())
                 .thinkingContent(message.getThinkingContent())
                 .thinkingDuration(message.getThinkingDuration())
                 .build();
-    }
-
-    private ChatMessage toChatMessage(MemoryDO memoryDO) {
-        ChatMessage chatMessage = new ChatMessage(ChatMessage.Role.fromString(memoryDO.getRole()), memoryDO.getContent());
-        chatMessage.setThinkingContent(memoryDO.getThinkingContent());
-        chatMessage.setThinkingDuration(memoryDO.getThinkingDuration());
-        return chatMessage;
-    }
-
-    private int safeTurnCount(Integer value) {
-        return value == null || value <= 0 ? 1 : value;
     }
 }
