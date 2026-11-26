@@ -89,12 +89,12 @@ public class IntentResolver {
         if (CollUtil.isEmpty(subIntents)) {
             return List.of();
         }
-        //按照分数从大到小排序
+        // 分类器的候选列表可以是只读的，分配配额前先复制再排序。
         subIntents.forEach(subIntent -> {
             if (CollUtil.isNotEmpty(subIntent.getNodeScores())) {
-                subIntent.getNodeScores().sort(
-                        Comparator.comparing(NodeScore::getScore).reversed()
-                );
+                List<NodeScore> ranked = new ArrayList<>(subIntent.getNodeScores());
+                ranked.sort(Comparator.comparing(NodeScore::getScore).reversed());
+                subIntent.setNodeScores(ranked);
             }
         });
 
@@ -111,8 +111,8 @@ public class IntentResolver {
 
         for (int questionIndex = 0; questionIndex < subIntents.size(); questionIndex++) {
             SubQuestionIntent current = subIntents.get(questionIndex);
-            List<NodeScore> currentScores = CollUtil.isEmpty(current.getNodeScores()) ? new ArrayList<>() : new ArrayList<>(current.getNodeScores());
-            if (currentScores.isEmpty()) {
+            List<NodeScore> currentScores = current.getNodeScores();
+            if (CollUtil.isEmpty(currentScores)) {
                 result.add(new SubQuestionIntent(current.getSubQuestion(), new ArrayList<>()));
                 continue;
             }
